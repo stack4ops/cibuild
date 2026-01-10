@@ -1,0 +1,11 @@
+mirrors:
+  localregistry.example.com:5000:
+    endpoint:
+      - "https://localregistry.example.com:5000"
+configs:
+  localregistry.example.com:5000:
+    tls:
+      insecure_skip_verify: true
+    auth:
+      username: "admin"
+      password: "password"

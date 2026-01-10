@@ -1,0 +1,80 @@
+services:
+  dind:
+    image: docker.io/library/docker:dind
+    container_name: ${COMPOSE_PROJECT_NAME}-dind
+    userns_mode: host
+    privileged: true
+    restart: unless-stopped
+    expose:
+      - "2375"
+    environment:
+      - DOCKER_HOST=tcp://docker:2375
+      - DOCKER_TLS_VERIFY=
+      - DOCKER_TLS_CERTDIR=
+    volumes:
+      - dind-data:/var/lib/docker
+      - ./daemon.json:/etc/docker/daemon.json:ro
+    networks:
+      default:
+        aliases:
+          - docker
+  localregistry:
+    image: docker.io/library/registry:2
+    container_name: localregistry
+    restart: unless-stopped
+    expose:
+      - 5000
+
+    ## if you need to access the build images from your local host docker environment uncomment ports entry and pull images to local docker storage
+    ## requires entry in /etc/hosts: 127.0.0.1 localhost localregistry.example.com
+    ## requires entry in /etc/docker/daemon.json: "insecure-registries":["https://localregistry.example.com:5000","localregistry.example.com:5000"]
+    ## p.e. docker pull localregistry.example.com:5000/stack4ops/test:latest
+    ports:
+      - "127.0.0.1:${REGISTRY_PORT}:5000"
+
+    ## TLS, FQDN and credentials for localregistry are required for a full functional build pipeline
+    environment:
+      - REGISTRY_HTTP_TLS_CERTIFICATE=/certs/chain.server.top.crt
+      - REGISTRY_HTTP_TLS_KEY=/certs/server.key
+      - REGISTRY_AUTH_HTPASSWD_REALM="Registry Realm"
+      - REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd
+      - REGISTRY_AUTH=htpasswd
+      - REGISTRY_STORAGE_DELETE_ENABLED=true
+    volumes:
+      - registry-data:/var/lib/registry
+      - ./localregistry/certs:/certs
+      - ./localregistry/auth:/auth
+    networks:
+      default:
+        aliases:
+          - "localregistry.example.com"
+  registrybrowser:
+    image: klausmeyer/docker-registry-browser:latest
+    container_name: registrybrowser
+    restart: unless-stopped
+    depends_on:
+      - localregistry
+    environment:
+      - DOCKER_REGISTRY_URL=https://localregistry.example.com:5000
+      - NO_SSL_VERIFICATION=true
+      - ENABLE_COLLAPSE_NAMESPACES=true
+      - ENABLE_DELETE_IMAGES=true
+      - SECRET_KEY_BASE=secretkeybased
+      - TOKEN_AUTH_USER=admin
+      - TOKEN_AUTH_PASSWORD=password
+      - BASIC_AUTH_USER=admin
+      - BASIC_AUTH_PASSWORD=password
+    ports:
+      - "127.0.0.1:${REGISTRY_BROWSER_PORT}:8080"
+volumes:
+  dind-data:
+    name: ${COMPOSE_PROJECT_NAME}-dind-data
+    external: true
+  registry-data:
+    name: ${COMPOSE_PROJECT_NAME}-registry-data
+    external: true
+
+networks:
+  default:
+    name: ${COMPOSE_PROJECT_NAME}-net
+    external: true

@@ -1,0 +1,16 @@
+{
+    "auths" : {
+      "TARGET_REG": {
+        "username": "TARGET_USER",
+        "password": "TARGET_PASS"
+      },
+      "BASE_REG": {
+        "username": "BASE_USER",
+        "password": "BASE_PASS"
+      },
+      "CI_REG": {
+        "username": "CI_USER",
+        "password": "CI_PASS"
+      }
+    }
+  }

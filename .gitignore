@@ -1,0 +1,6 @@
+.env
+kubectl
+kubeconfig
+mkcert
+installer/buildkit/certs
+installer/buildkit/*-certs.yaml

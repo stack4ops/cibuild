@@ -1,0 +1,10 @@
+{
+  "ipv6": false,
+  "insecure-registries":["localregistry.example.com:5000"],
+  "default-address-pools" : [
+    {
+      "base" : "10.10.0.0/16",
+      "size" : 24
+    }
+  ]
+}

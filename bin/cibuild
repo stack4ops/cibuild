@@ -1,0 +1,7 @@
+#!/bin/sh
+# cibuild entrypoint (temporary shell, will be replaced by Go binary)
+
+export CIBUILD_BIN_PATH="$(cd "$(dirname "$0")" && pwd)"
+export CIBUILD_LIB_PATH="${CIBUILD_BIN_PATH}/lib"
+# Forward all arguments to main.sh
+exec "$CIBUILD_LIB_PATH/main.sh" "$@"

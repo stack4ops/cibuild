@@ -1,0 +1,71 @@
+#!/bin/sh
+
+## run cibuild in cibuilder image
+
+set -eu
+
+. ~/.config/cibuild/.env
+
+# Usage / help
+usage() {
+  echo ""
+  echo "cibuild - CI build tool"
+  echo ""
+  echo "Run cibuild in $(pwd)"
+  echo ""
+  echo "Usage:"
+  echo "  $(basename "$0") -r [RUN_CMD]"
+  echo ""
+  echo "Args:"
+  echo "  -h, --help       Show this help"
+  echo "  -v, --version    Show version"
+  echo "  -r, --run        Run command: check|build|test|deploy|all"
+  echo ""
+}
+
+# Parse flags
+CIBUILD_RUN_CMD=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -v|--version)
+      echo "$CIBUILD_VERSION"
+      exit 0
+      ;;
+    -r|--run)
+      shift
+      CIBUILD_RUN_CMD="$1"
+      ;;
+    *)
+      err "Unknown argument: $1"
+      usage
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+LOCAL_LIBS_MOUNT=""
+LOCAL_ENTRYPOINT=""
+
+if [ "${USE_REPO_LIBS}" = "1" ]; then
+  LOCAL_LIBS_MOUNT="-v ${LIB_PATH}:/home/user/bin"
+  if [ "${USE_REPO_ENTRYPOINT}" = "1" ]; then
+    LOCAL_ENTRYPOINT="--entrypoint=/home/user/bin/cibuild_entrypoint.sh"
+  fi
+fi
+
+docker run \
+  --rm \
+  --network ${COMPOSE_PROJECT_NAME}-net \
+  --privileged \
+  ${LOCAL_LIBS_MOUNT} \
+  ${LOCAL_ENTRYPOINT} \
+  -v .:/repo \
+  -w /repo \
+  --env-file ~/.config/cibuild/.env \
+  -e "CIBUILD_RUN_CMD=${CIBUILD_RUN_CMD}" \
+  stack4ops/cibuilder:${CIBUILDER_REF}

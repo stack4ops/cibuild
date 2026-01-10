@@ -1,0 +1,2 @@
+[registry."localregistry.example.com:5000"]
+  insecure = true

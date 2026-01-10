@@ -1,0 +1,191 @@
+#!/bin/sh
+# Package cibuild/deploy
+
+# ---- Guard (like init once) ----
+[ -n "${_CIBUILD_DEPLOY_LOADED-}" ] && return
+_CIBUILD_DEPLOY_LOADED=1
+
+cibuild__deploy_copy_tag() {
+  local copy_to_tag="$1" \
+        target_image=$(cibuild_ci_target_image) \
+        target_tag=$(cibuild_ci_target_tag)
+        
+  if ! regctl -v error image copy ${target_image}:${target_tag} ${target_image}:${copy_to_tag} >/dev/null 2>&1; then
+      cibuild_log_err "failed to copy ${target_image}:${target_tag} to ${target_image}:${copy_to_tag}"
+      return 1
+  fi
+  return 0
+}
+
+cibuild__deploy_create_index() {
+  
+  local target_image=$(cibuild_ci_target_image) \
+        target_tag=$(cibuild_ci_target_tag) \
+        platforms \
+        build_platforms=$(cibuild_env_get 'build_platforms') \
+        build_tag=$(cibuild_env_get 'build_tag') \
+        image_tag \
+        deploy_docker_attestation_autodetect=$(cibuild_env_get 'deploy_docker_attestation_autodetect') \
+        deploy_docker_attestation_manifest=$(cibuild_env_get 'deploy_docker_attestation_manifest') \
+        base_registry=$(cibuild_core_base_registry) \
+        ref_digest \
+        image_digest
+
+  regctl -v error index create "${target_image}:${target_tag}"
+
+  platforms=$(echo "${build_platforms}" | tr ',' ' ')
+  for platform in ${platforms}; do
+    platform_tag=$(echo "${platform}" | tr '/' '-')
+    image_tag="${build_tag}-${target_tag}-${platform_tag}"
+    regctl -v error index add "${target_image}:${target_tag}" --ref "${target_image}:${image_tag}" --platform ${platform}
+  done
+
+  if [ "${deploy_docker_attestation_autodetect}" = "1" ] && [ "${base_registry}" = "docker.io" ]; then
+    cibuild_log_debug "docker.io detected as base_registry set deploy_docker_attestation_manifest=1"
+    deploy_docker_attestation_manifest=1
+  fi
+  if [ "${deploy_docker_attestation_manifest}" = "1" ]; then
+    cibuild_log_debug "add docker attestation manifest"
+    # only one platform is required for referencing
+    # if linux/amd64 is not found first platform im array is used
+    set -- $platforms
+    first=$1
+    value=linux/amd64
+
+    case " $platforms " in
+      *" $value "*) platform="$value" ;;
+      *) platform="$first" ;;
+    esac
+    platform_tag=$(echo "${platform}" | tr '/' '-')
+    image_tag="${build_tag}-${target_tag}-${platform_tag}"
+
+    ref_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform unknown/unknown)
+    image_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform ${platform})
+
+    regctl -v error index add "${target_image}:${target_tag}" \
+      --ref ${target_image}@${ref_digest} \
+      --desc-platform unknown/unknown \
+      --desc-annotation vnd.docker.reference.type=attestation-manifest \
+      --desc-annotation vnd.docker.reference.digest=${image_digest}
+  fi
+  
+  # keeping arch_index 
+  #
+  # todo: check if new index is ok before deleting arch indices
+  # if [ "${keep_arch_index:-0}" = "0" ]; then
+  #   cibuild_log_debug "delete image tag"
+  #   for platform in ${platforms}; do
+  #     platform_tag=$(echo "${platform}" | tr '/' '-')
+  #     image_tag="${build_tag}-${platform_tag}"
+  #     digest=$(regctl -v error manifest head ${target_image:?}:${image_tag:?})
+  #     cibuild_log_debug $digest
+  #     regctl -v error manifest delete ${target_image:?}@${digest}
+  #   done
+  # fi
+}
+
+cibuild__deploy_additional_tags() {
+  local deploy_additional_tags=$(cibuild_env_get 'deploy_additional_tags')
+  local tag
+
+  IFS=',;'
+  set -- $deploy_additional_tags
+  unset IFS
+  
+  for tag; do
+    local processed_tag=$(cibuild_ci_process_tag "$tag")
+    cibuild_log_debug "adding addtional tag $processed_tag"
+    if ! cibuild__deploy_copy_tag "$processed_tag"; then
+       cibuild_log_err "error assigning additional tag $processed_tag"
+       continue
+    fi
+  done
+
+}
+
+cibuild__deploy_minor_tag() {
+
+  local deploy_minor_tag_regex=$(cibuild_env_get 'deploy_minor_tag_regex') \
+        base_image=$(cibuild_core_base_image) \
+        base_tag=$(cibuild_core_base_tag) \
+        ref \
+        current_digest \
+
+  if [ -z "${deploy_minor_tag_regex:-}" ]; then
+    cibuild_log_err "no minor tag regex defined. skipping get_minor_tag"
+    return 1
+  fi
+
+  ref="${base_image}:${base_tag}"
+  
+  # retrieve digest for base_tag
+  if ! current_digest=$(regctl -v error image digest "$ref"); then
+    cibuild_log_err "failed to get digest for $ref"
+    return 1
+  fi
+
+  cibuild_log_debug "current_digest: $current_digest"
+  cibuild_log_debug "minor_tag_regex: ${deploy_minor_tag_regex}"
+
+  # get tags, filter, reverse sorting
+  local limit=100 \
+        last="" \
+        seen_last="" \
+        all_tags=""
+  while :; do
+    local tags="$(regctl -v error tag ls "${base_image}" --limit "$limit" ${last:+--last "$last"})"
+
+    # no more tags available
+    [ -z "$tags" ] && break
+
+    all_tags="$all_tags\n$tags"
+    # store last tag
+    last="$(echo "$tags" | tail -n 1)"
+
+    # no endless loop
+    if [ "$last" = "$seen_last" ]; then
+      cibuild_log_info "paging stalled at tag: $last" >&2
+      break
+    fi
+    seen_last="$last"
+  done 
+  
+  tags="$(printf "%b\n" "$all_tags" | sort -V -r | grep -E "$deploy_minor_tag_regex")"
+  
+  local mnt
+  for mt in $tags; do
+    if ! tag_digest=$(regctl -v error image digest "${base_image}:${mt}"); then
+      cibuild_log_err "failed to get digest for ${base_image}:${mt}"
+      continue
+    fi
+
+    cibuild_log_debug "$tag_digest - $mt"
+
+    if [ "$tag_digest" = "$current_digest" ]; then
+      cibuild_log_debug "found matching tag for $base_tag = $mt with same digest $current_digest"
+      cibuild_log_debug "adding minor tag $mt"
+      if ! cibuild__deploy_copy_tag "$mt"; then
+        return 1
+      else
+        return 0
+      fi
+    fi
+  done
+
+  cibuild_log_err "could not get minor_tag from $base_tag"
+  return 1
+}
+
+cibuild_deploy_run() {
+  local deploy_enabled=$(cibuild_env_get 'deploy_enabled')
+
+  if [ "${deploy_enabled:?}" != "1" ]; then
+    cibuild_log_info "deploy run not enabled: deploy run skipped"
+    return
+  fi
+
+  cibuild__deploy_create_index
+  cibuild__deploy_additional_tags
+  cibuild__deploy_minor_tag
+
+}
