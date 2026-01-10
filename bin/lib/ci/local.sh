@@ -151,8 +151,6 @@ cibuild_ci_target_image_full() {
 
 cibuild__ci_init() {
 
-  local env_file
-
   cibuild_log_info "init ci: $(cibuild_ci_type)"
 
   if _CIBUILD_CI_COMMIT="$(git rev-parse HEAD 2>/dev/null)"; then
@@ -177,13 +175,6 @@ cibuild__ci_init() {
     exit 1
   fi
 
-  env_file=$(cibuild_env_get 'env_file_local')
-
-  if [ -f "$(pwd)/$env_file" ]; then
-    set -a
-    . "$(pwd)/$env_file"
-    set +a
-  fi
 }
 
 cibuild__ci_init

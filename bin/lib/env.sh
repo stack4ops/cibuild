@@ -7,8 +7,6 @@ _CIBUILD_ENV_LOADED=1
 
 # ---- Defaults (Go: var DefaultEnv = …) ----
 _CIBUILD_DEFAULTS='
-env_file=cibuild.env
-env_file_local=cibuild.local.env
 version=0.8.0
 pipeline_env=
 add_branch_name_to_tags=
@@ -74,6 +72,16 @@ cibuild__env_detect_ci() {
   else
     _CIBUILD_PIPELINE_ENV=local
     . "${CIBUILD_LIB_PATH}/ci/local.sh"
+  fi
+
+  # load adapter config if exists in repo
+  env_file="$(pwd)/cibuild.${_CIBUILD_PIPELINE_ENV}.env"
+
+  if [ -f "$env_file" ]; then
+    cibuild_log_info "loading adapter file: $env_file"
+    set -a
+    . "$env_file"
+    set +a
   fi
 }
 
