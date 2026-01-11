@@ -49,30 +49,43 @@ _CIBUILD_ENV_VARS=""
 
 cibuild__env_detect_ci() {
   
-  # only for local adapter development
-  if [ -n "$_CIBUILD_PIPELINE_ENV" ]; then
-    if [ ! -f "${CIBUILD_LIB_PATH}/ci/${_CIBUILD_PIPELINE_ENV}.sh" ]; then
-      cibuild_main_err "$_CIBUILD_PIPELINE_ENV not supported"
+  # # only for local adapter development
+  # if [ -n "$_CIBUILD_PIPELINE_ENV" ]; then
+  #   if [ ! -f "${CIBUILD_LIB_PATH}/ci/${_CIBUILD_PIPELINE_ENV}.sh" ]; then
+  #     cibuild_main_err "$_CIBUILD_PIPELINE_ENV not supported"
+  #   fi
+  #   #. "${CIBUILD_LIB_PATH}/ci/local.sh"
+  #   # load adapter config if exists in repo
+  #   env_file="$(pwd)/cibuild.${_CIBUILD_PIPELINE_ENV}.env"
+
+  #   if [ -f "$env_file" ]; then
+  #     cibuild_log_info "loading adapter file: $env_file"
+  #     set -a
+  #     . "$env_file"
+  #     set +a
+  #   fi
+  #   . "${CIBUILD_LIB_PATH}/ci/$_CIBUILD_PIPELINE_ENV.sh"
+  #   return
+  # fi
+  
+  if [ -z "$_CIBUILD_PIPELINE_ENV" ]; then
+    # automatic detection
+    if [ -n "${GITLAB_CI:-}" ]; then
+      _CIBUILD_PIPELINE_ENV=gitlab
+      . "${CIBUILD_LIB_PATH}/ci/gitlab.sh"
+    elif [ -n "${GITHUB_ACTIONS:-}" ]; then
+      cibuild_main_err "github actions not implemented yet"
+    elif [ -n "${CIRCLECI:-}" ]; then
+      cibuild_main_err "circleci not implemented yet"
+    elif [ -n "${JENKINS_URL:-}" ]; then
+      cibuild_main_err "jenkins not implemented yet"
+    else
+      _CIBUILD_PIPELINE_ENV=local
+      . "${CIBUILD_LIB_PATH}/ci/local.sh"
     fi
-    . "${CIBUILD_LIB_PATH}/ci/local.sh"
-    . "${CIBUILD_LIB_PATH}/ci/$_CIBUILD_PIPELINE_ENV.sh"
-    return
   fi
   
-  # automatic detection
-  if [ -n "${GITLAB_CI:-}" ]; then
-    _CIBUILD_PIPELINE_ENV=gitlab
-    . "${CIBUILD_LIB_PATH}/ci/gitlab.sh"
-  elif [ -n "${GITHUB_ACTIONS:-}" ]; then
-    cibuild_main_err "github actions not implemented yet"
-  elif [ -n "${CIRCLECI:-}" ]; then
-    cibuild_main_err "circleci not implemented yet"
-  elif [ -n "${JENKINS_URL:-}" ]; then
-    cibuild_main_err "jenkins not implemented yet"
-  else
-    _CIBUILD_PIPELINE_ENV=local
-    . "${CIBUILD_LIB_PATH}/ci/local.sh"
-  fi
+  . "${CIBUILD_LIB_PATH}/ci/${_CIBUILD_PIPELINE_ENV}.sh"
 
   # load adapter config if exists in repo
   env_file="$(pwd)/cibuild.${_CIBUILD_PIPELINE_ENV}.env"
