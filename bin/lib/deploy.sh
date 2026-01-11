@@ -112,7 +112,7 @@ cibuild__deploy_minor_tag() {
         current_digest \
 
   if [ -z "${deploy_minor_tag_regex:-}" ]; then
-    cibuild_log_err "no minor tag regex defined. skipping get_minor_tag"
+    cibuild_log_debug "no minor tag regex defined. skipping get_minor_tag"
     return 0
   fi
 
