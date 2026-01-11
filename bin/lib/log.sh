@@ -78,7 +78,7 @@ cibuild_log_dump()  { cibuild__log_print "$_LOG_DUMP"  "$@"; }
 cibuild_log_init() {
   [ "${_CIBUILD_LOG_INIT_DONE:-}" = "1" ] && return
   _CIBUILD_LOG_INIT_DONE=1
-  _LOG_LEVEL="$(cibuild_env_get log_level $_LOG_LEVEL)"
-  _LOG_COLOR="$(cibuild_env_get log_color $_LOG_COLOR)"
-  _LOG_TAB="$(cibuild_env_get log_tab $_LOG_TAB)"
+  _LOG_LEVEL="$(cibuild_env_get CIBUILD_LOG_LEVEL $_LOG_LEVEL)"
+  _LOG_COLOR="$(cibuild_env_get CIBUILD_LOG_COLOR $_LOG_COLOR)"
+  _LOG_TAB="$(cibuild_env_get CIBUILD_LOG_TAB $_LOG_TAB)"
 }
