@@ -6,13 +6,13 @@
 _CIBUILD_TEST_LOADED=1
 
 # can be used in test scripts
-_test_id # ramdom test_id used also for port binding
-_test_image
-_host
-_target_port
-_publish
-_container
-_pod
+_test_id='' # ramdom test_id used also for port binding
+_test_image=''
+_host=''
+_target_port=''
+_publish=''
+_container=''
+_pod=''
 
 # ---------- RUN HELPERS ----------
 cibuild__test_run_docker() {
