@@ -413,8 +413,6 @@ cibuild_test_run() {
   local test_enabled=$(cibuild_env_get 'test_enabled') \
         test_file=$(cibuild_env_get 'test_file')
   
-  cibuild_log_debug "test_file: $test_file"
-
   if [ "${test_enabled:?}" != "1" ]; then
     cibuild_log_info "test run not enabled: test run skipped"
     return
