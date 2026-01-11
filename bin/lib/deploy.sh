@@ -113,7 +113,7 @@ cibuild__deploy_minor_tag() {
 
   if [ -z "${deploy_minor_tag_regex:-}" ]; then
     cibuild_log_err "no minor tag regex defined. skipping get_minor_tag"
-    return 1
+    return 0
   fi
 
   ref="${base_image}:${base_tag}"
