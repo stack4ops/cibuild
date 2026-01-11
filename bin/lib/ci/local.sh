@@ -83,6 +83,7 @@ cibuild_ci_image_path() {
 cibuild_ci_image() {
   printf '%s\n' "$(cibuild_ci_registry)/$(cibuild_ci_image_path)"
 }
+
 # base image data
 
 cibuild_ci_base_registry_auth() {
