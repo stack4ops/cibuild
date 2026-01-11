@@ -91,9 +91,12 @@ cibuild_check_run() {
     return
   fi
   # only check in scheduled pipelines not commits or other triggers
-  if [ ! "$(cibuild_ci_type)" = "local" ] && [ ! $(cibuild_ci_scheduled) ]; then
-    cibuild_log_info "check only in schedule ci pipeline or local"
-    return
+  
+  if [ "$(cibuild_ci_type)" != "local" ]; then
+    if ! $(cibuild_ci_scheduled); then
+      cibuild_log_info "check only in schedule ci pipeline or local"
+      return
+    fi
   fi
 
   cibuild__check_base_image
