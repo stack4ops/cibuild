@@ -3,8 +3,6 @@
 
 # GitHub Actions Adapter
 
-# Example code: not tested"!
-
 # ---- Guard (like init once) ----
 [ -n "${_CIBUILD_CI_LOADED-}" ] && return
 # bool
@@ -94,6 +92,14 @@ cibuild_ci_registry_pass() {
   fi
 }
 
+cibuild_ci_image_path() {
+  printf '%s\n' "${CIBUILD_CI_IMAGE_PATH:-$GITHUB_REPOSITORY}"
+}
+
+cibuild_ci_image() {
+  printf '%s\n' "$(cibuild_ci_registry)/$(cibuild_ci_image_path)"
+}
+
 # base image data
 
 cibuild_ci_base_registry_auth() {
@@ -145,11 +151,11 @@ cibuild_ci_target_registry_pass() {
 }
 
 cibuild_ci_target_image_path() {
-  printf '%s\n' "${CIBUILD_TARGET_IMAGE_PATH:-$CI_PROJECT_PATH}"
+  printf '%s\n' "${CIBUILD_TARGET_IMAGE_PATH:-$GITHUB_REPOSITORY}"
 }
 
 cibuild_ci_target_tag() {
-  printf '%s\n' "${CIBUILD_TARGET_TAG:-}"
+  printf '%s\n' $(cibuild_ci_process_tag "${CIBUILD_TARGET_TAG:-}")
 }
 
 cibuild_ci_target_image() {
