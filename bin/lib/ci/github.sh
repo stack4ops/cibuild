@@ -59,7 +59,7 @@ cibuild_ci_cancel() {
 cibuild_ci_canceled() { printf '%s\n' $_CIBUILD_CI_CANCELED; }
 
 cibuild_ci_scheduled() {
-  [ "${GITHUB_EVENT_NAME:-}" = "schedule"]
+  [ "${GITHUB_EVENT_NAME:-}" = "schedule"] || [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]
 }
 
 cibuild_ci_commit() { printf '%s\n' $_CIBUILD_CI_COMMIT; }
