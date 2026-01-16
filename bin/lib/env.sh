@@ -53,7 +53,7 @@ cibuild__env_detect_ci() {
     # automatic detection
     if [ -n "${GITLAB_CI:-}" ]; then
       _CIBUILD_PIPELINE_ENV=gitlab
-    elif [ -n "${GITHUB_ACTIONS:-}" ]; then
+    elif [ -n "${GITHUB_REPOSITORY:-}" ]; then
       _CIBUILD_PIPELINE_ENV=github
     elif [ -n "${CIRCLECI:-}" ]; then
       cibuild_main_err "circleci not implemented yet"
