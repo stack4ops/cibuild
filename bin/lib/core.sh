@@ -183,6 +183,7 @@ cibuild__core_create_docker_auth_config() {
   cibuild_log_dump "ci_registry: $ci_registry"
   cibuild_log_dump "ci_registry_user: $ci_registry_user"
   cibuild_log_dump "ci_registry_pass: $(cibuild_core_mask $ci_registry_pass)"
+  cibuild_log_dump "github_token: $GITHUB_TOKEN"
   
   if [ ! -d "${HOME}/.docker" ]; then
     cibuild_log_debug "create ~/.docker directory"
