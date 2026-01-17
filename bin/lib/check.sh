@@ -93,8 +93,8 @@ cibuild_check_run() {
   # only check in scheduled pipelines not commits or other triggers
   
   if [ "$(cibuild_ci_type)" != "local" ]; then
-    if ! $(cibuild_ci_scheduled); then
-      cibuild_log_info "check only in schedule ci pipeline or local"
+    if ! $(cibuild_ci_allowed); then
+      cibuild_log_info "check only in scheduled or manual ci trigger or local pipeline_env"
       return
     fi
   fi
