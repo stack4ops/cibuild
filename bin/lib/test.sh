@@ -125,7 +125,7 @@ cibuild__test_run_kubernetes() {
 }
 
 cibuild__test_detect_docker() {
-  docker info
+  sleep 20
   if ! timeout 20 docker info >/dev/null 2>&1; then
     return 1
   else
