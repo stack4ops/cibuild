@@ -36,7 +36,7 @@ cibuild_ci_process_tag() {
 }
 
 cibuild_ci_token() {
-  printf '%s\n' "${CIBUILD_CI_TOKEN:-GITHUB_TOKEN}"
+  printf '%s\n' "${CIBUILD_CI_TOKEN:-$GITHUB_TOKEN}"
 }
 
 cibuild__ci_cancel_requirements() {
