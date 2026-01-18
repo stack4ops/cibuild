@@ -27,7 +27,7 @@ cibuild__deploy_create_index() {
         image_tag \
         deploy_docker_attestation_autodetect=$(cibuild_env_get 'deploy_docker_attestation_autodetect') \
         deploy_docker_attestation_manifest=$(cibuild_env_get 'deploy_docker_attestation_manifest') \
-        base_registry=$(cibuild_core_base_registry) \
+        target_registry=$(cibuild_ci_target_registry) \
         ref_digest \
         image_digest
 
@@ -40,8 +40,8 @@ cibuild__deploy_create_index() {
     regctl -v error index add "${target_image}:${target_tag}" --ref "${target_image}:${image_tag}" --platform ${platform}
   done
 
-  if [ "${deploy_docker_attestation_autodetect}" = "1" ] && [ "${base_registry}" = "docker.io" ]; then
-    cibuild_log_debug "docker.io detected as base_registry set deploy_docker_attestation_manifest=1"
+  if [ "${deploy_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
+    cibuild_log_debug "docker.io detected as target_registry set deploy_docker_attestation_manifest=1"
     deploy_docker_attestation_manifest=1
   fi
   if [ "${deploy_docker_attestation_manifest}" = "1" ]; then
