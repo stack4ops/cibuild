@@ -56,19 +56,8 @@ cibuild__deploy_create_index() {
   if ! regctl -v error index create "$target_image:$target_tag" $create_args; then
     cibuild_main_err "error creating image index ${target_image}:${target_tag}"
   fi
-
-  # if ! regctl -v error index create "${target_image}:${target_tag}"; then
-  #   cibuild_main_err "error creating image index ${target_image}:${target_tag}"
-  # fi
-
-  # platforms=$(echo "${build_platforms}" | tr ',' ' ')
-  # for platform in ${platforms}; do
-  #   platform_tag=$(echo "${platform}" | tr '/' '-')
-  #   image_tag="${build_tag}-${target_tag}-${platform_tag}"
-  #   if ! regctl -v error index add "${target_image}:${target_tag}" --ref "${target_image}:${image_tag}" --platform ${platform}; then
-  #     cibuild_main_err "error adding "${target_image}:${image_tag}" to index ${target_image}:${target_tag}"
-  #   fi
-  # done
+  
+  cibuild_log_debug "image index created: ${target_image}:${target_tag} for $platforms"
 
   if [ "${deploy_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
     cibuild_log_debug "docker.io detected as target_registry set deploy_docker_attestation_manifest=1"
