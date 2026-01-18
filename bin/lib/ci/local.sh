@@ -35,6 +35,8 @@ cibuild_ci_process_tag() {
     -e "s/__REF__/$(sed_escape "$_CIBUILD_CI_REF")/g"
 }
 
+cibuild_ci_token() { return ""; }
+
 cibuild__ci_cancel_requirements() { return 0; }
 
 cibuild_ci_cancel() {

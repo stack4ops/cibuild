@@ -35,8 +35,12 @@ cibuild_ci_process_tag() {
     -e "s/__REF__/$(sed_escape "$_CIBUILD_CI_REF")/g"
 }
 
+cibuild_ci_token() {
+  printf '%s\n' "${CIBUILD_CI_TOKEN:-GITHUB_TOKEN}"
+}
+
 cibuild__ci_cancel_requirements() {
-  [ -n "${CIBUILD_CANCEL_TOKEN:-}" ] || return 2
+  [ -n "$(cibuild_ci_token)" ] || return 2
   [ -n "${GITHUB_RUN_ID:-}" ] || return 3
   [ -n "${GITHUB_REPOSITORY:-}" ] || return 4
 }
@@ -50,7 +54,7 @@ cibuild_ci_cancel() {
   local api_url="https://api.github.com/repos/$owner_repo/actions/runs/$run_id/cancel"
 
   curl -sS -f -X POST \
-    -H "Authorization: token $CIBUILD_CANCEL_TOKEN" \
+    -H "Authorization: Bearer $(cibuild_ci_token)" \
     -H "Accept: application/vnd.github.v3+json" \
     "$api_url" >/dev/null || return 4
   _CIBUILD_CI_CANCELED=1

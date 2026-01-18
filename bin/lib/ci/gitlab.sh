@@ -35,18 +35,32 @@ cibuild_ci_process_tag() {
     -e "s/__REF__/$(sed_escape "$_CIBUILD_CI_REF")/g"
 }
 
+cibuild_ci_token() {
+  printf '%s\n' "${CIBUILD_CI_TOKEN:-}"
+}
+
 cibuild__ci_cancel_requirements() {
-  [ -n "${CIBUILD_CANCEL_TOKEN:-}" ] || return 2
+  [ -n "$(cibuild_ci_token)" ] || return 2
   [ -n "${CI_API_V4_URL:-}" ] || return 3
   [ -n "${CI_PROJECT_ID:-}" ] || return 4
   [ -n "${CI_PIPELINE_ID:-}" ] || return 5
 }
 
+# cibuild_ci_cancel() {
+#   cibuild__ci_cancel_requirements || return $?
+#   local cancel_url="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/pipelines/${CI_PIPELINE_ID}/cancel"
+#   curl -sS -f -X POST \
+#     -H "$(cibuild_ci_token_user): $(cibuild_ci_token)" \
+#     "$cancel_url" \
+#     >/dev/null || return 10
+#   _CIBUILD_CI_CANCELED=1
+# }
+
 cibuild_ci_cancel() {
   cibuild__ci_cancel_requirements || return $?
   local cancel_url="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/pipelines/${CI_PIPELINE_ID}/cancel"
   curl -sS -f -X POST \
-    -H "PRIVATE-TOKEN: $CIBUILD_CANCEL_TOKEN" \
+    -H "Authorization: Bearer $(cibuild_ci_token)" \
     "$cancel_url" \
     >/dev/null || return 10
   _CIBUILD_CI_CANCELED=1
