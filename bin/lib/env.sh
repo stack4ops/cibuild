@@ -67,7 +67,7 @@ cibuild__env_detect_ci() {
   # load generic config if exists
   generic_env_file="$(pwd)/cibuild.env"
   if [ -f "$generic_env_file" ]; then
-    cibuild_log_info "loading adapter file: $generic_env_file"
+    cibuild_log_info "loading generic config: $generic_env_file"
     set -a
     . "$generic_env_file"
     set +a
@@ -76,7 +76,7 @@ cibuild__env_detect_ci() {
   # load adapter env if exists in repo and export env vars
   adapter_env_file="$(pwd)/cibuild.${_CIBUILD_PIPELINE_ENV}.env"
   if [ -f "$adapter_env_file" ]; then
-    cibuild_log_info "loading adapter file: $adapter_env_file"
+    cibuild_log_info "loading adapter config: $adapter_env_file"
     set -a
     . "$adapter_env_file"
     set +a
