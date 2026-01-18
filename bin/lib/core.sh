@@ -241,7 +241,7 @@ cibuild__core_create_docker_auth_config() {
   sed -i "s|CI_USER|$ci_user|g" ${HOME}/.docker/config.json
   sed -i "s|CI_PASS|$ci_pass|g" ${HOME}/.docker/config.json
   
-  #cat ${HOME}/.docker/config.json
+  cat ${HOME}/.docker/config.json
 }
 
 cibuild__core_create_regctl_auth_config() {
