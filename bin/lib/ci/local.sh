@@ -46,7 +46,7 @@ cibuild_ci_cancel() {
 
 cibuild_ci_canceled() { printf '%s\n' $_CIBUILD_CI_CANCELED; }
 
-cibuild_ci_allowed() { return 1; }
+cibuild_ci_check_allowed() { return 1; }
 
 cibuild_ci_commit() { printf '%s\n' $_CIBUILD_CI_COMMIT; }
 
