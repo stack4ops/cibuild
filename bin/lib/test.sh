@@ -67,6 +67,7 @@ cibuild__test_run_docker() {
 
     case "$status" in
       running)
+        sleep 3
         break
         ;;
       exited|dead)
