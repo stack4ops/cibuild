@@ -67,8 +67,10 @@ cibuild__test_run_docker() {
 
     case "$status" in
       running)
-        sleep 3
-        break
+        if docker logs "$_container" 2>/dev/null | grep -q .; then
+          echo "container running and logs available"
+          break
+        fi
         ;;
       exited|dead)
         cibuild_log_err "[failed] container exited early (status=$status)"
