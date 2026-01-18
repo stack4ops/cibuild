@@ -31,18 +31,44 @@ cibuild__deploy_create_index() {
         ref_digest \
         image_digest
 
-  if ! regctl -v error index create "${target_image}:${target_tag}"; then
+  platforms=$(echo "$build_platforms" | tr ',' ' ')
+
+  local create_args=""
+  local found=0
+
+  for platform in $platforms; do
+    platform_tag=$(echo "$platform" | tr '/' '-')
+    image_tag="${build_tag}-${target_tag}-${platform_tag}"
+    ref="${target_image}:${image_tag}"
+
+    if regctl -v error manifest head "$ref" >/dev/null 2>&1; then
+      create_args="$create_args --ref $ref --platform $platform"
+      found=1
+    else
+      cibuild_main_err "missing image $ref, skipping"
+    fi
+  done
+
+  if [ "$found" -eq 0 ]; then
+    cibuild_main_err "no platform images found, cannot create index ${target_image}:${target_tag}"
+  fi
+
+  if ! regctl -v error index create "$target_image:$target_tag" $create_args; then
     cibuild_main_err "error creating image index ${target_image}:${target_tag}"
   fi
 
-  platforms=$(echo "${build_platforms}" | tr ',' ' ')
-  for platform in ${platforms}; do
-    platform_tag=$(echo "${platform}" | tr '/' '-')
-    image_tag="${build_tag}-${target_tag}-${platform_tag}"
-    if ! regctl -v error index add "${target_image}:${target_tag}" --ref "${target_image}:${image_tag}" --platform ${platform}; then
-      cibuild_main_err "error adding "${target_image}:${image_tag}" to index ${target_image}:${target_tag}"
-    fi
-  done
+  # if ! regctl -v error index create "${target_image}:${target_tag}"; then
+  #   cibuild_main_err "error creating image index ${target_image}:${target_tag}"
+  # fi
+
+  # platforms=$(echo "${build_platforms}" | tr ',' ' ')
+  # for platform in ${platforms}; do
+  #   platform_tag=$(echo "${platform}" | tr '/' '-')
+  #   image_tag="${build_tag}-${target_tag}-${platform_tag}"
+  #   if ! regctl -v error index add "${target_image}:${target_tag}" --ref "${target_image}:${image_tag}" --platform ${platform}; then
+  #     cibuild_main_err "error adding "${target_image}:${image_tag}" to index ${target_image}:${target_tag}"
+  #   fi
+  # done
 
   if [ "${deploy_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
     cibuild_log_debug "docker.io detected as target_registry set deploy_docker_attestation_manifest=1"
