@@ -96,7 +96,8 @@ cibuild_ci_registry_user() {
 
 cibuild_ci_registry_pass() {
   if [ "$(cibuild_ci_registry_auth)" = "1" ]; then
-    printf '%s\n' "${CIBUILD_CI_REGISTRY_PASS:-$CI_REGISTRY_PASSWORD}"
+    #printf '%s\n' "${CIBUILD_CI_REGISTRY_PASS:-$CI_REGISTRY_PASSWORD}"
+    printf '%s\n' "${CIBUILD_CI_REGISTRY_PASS:-$(cibuild_ci_token)}"
   else
     printf '%s\n' ""
   fi
