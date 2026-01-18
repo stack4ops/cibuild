@@ -31,13 +31,17 @@ cibuild__deploy_create_index() {
         ref_digest \
         image_digest
 
-  regctl -v error index create "${target_image}:${target_tag}"
+  if ! regctl -v error index create "${target_image}:${target_tag}"; then
+    cibuild_main_err "error creating image index ${target_image}:${target_tag}"
+  fi
 
   platforms=$(echo "${build_platforms}" | tr ',' ' ')
   for platform in ${platforms}; do
     platform_tag=$(echo "${platform}" | tr '/' '-')
     image_tag="${build_tag}-${target_tag}-${platform_tag}"
-    regctl -v error index add "${target_image}:${target_tag}" --ref "${target_image}:${image_tag}" --platform ${platform}
+    if ! regctl -v error index add "${target_image}:${target_tag}" --ref "${target_image}:${image_tag}" --platform ${platform}; then
+      cibuild_main_err "error adding "${target_image}:${image_tag}" to index ${target_image}:${target_tag}"
+    fi
   done
 
   if [ "${deploy_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
@@ -62,11 +66,13 @@ cibuild__deploy_create_index() {
     ref_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform unknown/unknown)
     image_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform ${platform})
 
-    regctl -v error index add "${target_image}:${target_tag}" \
+    if ! regctl -v error index add "${target_image}:${target_tag}" \
       --ref ${target_image}@${ref_digest} \
       --desc-platform unknown/unknown \
       --desc-annotation vnd.docker.reference.type=attestation-manifest \
-      --desc-annotation vnd.docker.reference.digest=${image_digest}
+      --desc-annotation vnd.docker.reference.digest=${image_digest}; then
+      cibuild_main_err "error adding docker attestation manifest"
+    fi
   fi
   
   # keeping arch_index 
