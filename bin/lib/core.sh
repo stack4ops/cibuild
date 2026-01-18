@@ -273,7 +273,8 @@ cibuild__core_create_regctl_auth_config() {
       cibuild_log_debug "already logged in: $reg"
     else
       if [ "$auth" = "1" ]; then
-        cibuild_log_debug "login in: $reg"
+        cibuild_log_debug "login in: $reg user:$user password:$pass"
+        
         regctl registry set "$reg" --hostname "$reg" --skip-check
         regctl registry login "$reg" --user "$user" --pass "$pass" --skip-check
         logged_in="$logged_in $reg"
