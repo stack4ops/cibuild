@@ -155,7 +155,7 @@ cibuild_ci_target_image_path() {
 }
 
 cibuild_ci_target_tag() {
-  printf '%s\n' $(cibuild_ci_process_tag "${CIBUILD_TARGET_TAG:-}")
+  printf '%s\n' $(cibuild_ci_process_tag "${CIBUILD_TARGET_TAG:-$(cibuild_core_base_tag)}")
 }
 
 cibuild_ci_target_image() {
