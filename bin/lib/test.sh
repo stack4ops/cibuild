@@ -35,24 +35,28 @@ cibuild__test_run_docker() {
 
   if [ "$ep_spec" = "keep" ] && [ $# -eq 0 ]; then
     cibuild_log_debug "no entrypoint and no cmd"
-    $cmd "$_test_image" >/dev/null 2>&1
-    return
+    cibuild_log_debug "trying: $cmd $_test_image"
+    cid=$($cmd "$_test_image" 2>/dev/null)
+    cibuild_log_debug $cid
+  else
+    case "$ep_spec" in
+      keep)
+        cibuild_log_debug "keep entrypoint with cmd: $@"
+        cibuild_log_debug "trying: $cmd $_test_image $@"
+        cid=$($cmd "$_test_image" "$@" 2>/dev/null)
+        ;;
+      "")
+        cibuild_log_debug "remove entrypoint and call: $@"
+        cibuild_log_debug "trying: $cmd --entrypoint='' $_test_image $@"
+        cid=$($cmd "--entrypoint=''" "$_test_image" "$@" 2>/dev/null)
+        ;;
+      *)
+        cibuild_log_debug "entrypoint: $ep_spec cmd: $@"
+        cibuild_log_debug "trying: $cmd --entrypoint=$ep_spec $_test_image $@"
+        cid=$($cmd "--entrypoint=$ep_spec" "$_test_image" "$@" 2>/dev/null)
+        ;;
+    esac
   fi
-
-  case "$ep_spec" in
-    keep)
-      cibuild_log_debug "keep entrypoint with cmd: $@"
-      cid=$($cmd "$_test_image" "$@" >/dev/null 2>&1)
-      ;;
-    "")
-      cibuild_log_debug "remove entrypoint and call: $@"
-      cid=$($cmd "--entrypoint=''" "$_test_image" "$@" >/dev/null 2>&1)
-      ;;
-    *)
-      cibuild_log_debug "entrypoint: $ep_spec cmd: $@"
-      cid=$($cmd "--entrypoint=$ep_spec" "$_test_image" "$@")
-      ;;
-  esac
   
   if [ -z "${cid:-}" ]; then
     cibuild_main_err "[failed] container could not be started."
