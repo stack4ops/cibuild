@@ -149,7 +149,7 @@ cibuild__deploy_minor_tag() {
   cibuild_log_debug "minor_tag_regex: ${deploy_minor_tag_regex}"
 
   # get tags, filter, reverse sorting
-  local limit=100 \
+  local limit=$(cibuild_env_get 'deploy_minor_tag_paging_limit') \
         last="" \
         seen_last="" \
         all_tags=""
@@ -162,7 +162,7 @@ cibuild__deploy_minor_tag() {
     all_tags="$all_tags\n$tags"
     # store last tag
     last="$(echo "$tags" | tail -n 1)"
-
+    cibuild_log_dump "$last"
     # no endless loop
     if [ "$last" = "$seen_last" ]; then
       cibuild_log_info "paging stalled at tag: $last" >&2

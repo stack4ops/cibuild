@@ -43,6 +43,7 @@ test_log_timeout=5
 deploy_enabled=1
 deploy_docker_attestation_autodetect=1
 deploy_docker_attestation_manifest=0
+deploy_minor_tag_paging_limit=10000
 deploy_minor_tag_regex=
 '
 
