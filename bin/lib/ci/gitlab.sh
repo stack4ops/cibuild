@@ -46,16 +46,6 @@ cibuild__ci_cancel_requirements() {
   [ -n "${CI_PIPELINE_ID:-}" ] || return 5
 }
 
-# cibuild_ci_cancel() {
-#   cibuild__ci_cancel_requirements || return $?
-#   local cancel_url="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/pipelines/${CI_PIPELINE_ID}/cancel"
-#   curl -sS -f -X POST \
-#     -H "$(cibuild_ci_token_user): $(cibuild_ci_token)" \
-#     "$cancel_url" \
-#     >/dev/null || return 10
-#   _CIBUILD_CI_CANCELED=1
-# }
-
 cibuild_ci_cancel() {
   cibuild__ci_cancel_requirements || return $?
   local cancel_url="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/pipelines/${CI_PIPELINE_ID}/cancel"
@@ -96,7 +86,6 @@ cibuild_ci_registry_user() {
 
 cibuild_ci_registry_pass() {
   if [ "$(cibuild_ci_registry_auth)" = "1" ]; then
-    #printf '%s\n' "${CIBUILD_CI_REGISTRY_PASS:-$CI_REGISTRY_PASSWORD}"
     printf '%s\n' "${CIBUILD_CI_REGISTRY_PASS:-$(cibuild_ci_token)}"
   else
     printf '%s\n' ""
