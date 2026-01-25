@@ -71,8 +71,14 @@ cibuild__test_run_docker() {
 
     case "$status" in
       running)
-        if docker logs "$_container" 2>/dev/null | grep -q .; then
+        # ret=
+        # if [ -n "$(docker logs "$_container" 2>/dev/null)" ]; then
+        #   echo "container running and logs available"
+        #   break
+        # fi
+        if docker logs "$_container" 2>/dev/null; then
           echo "container running and logs available"
+          sleep 1
           break
         fi
         ;;
@@ -261,7 +267,7 @@ cibuild__test_assert_response_kubernetes() {
   }
   trap cleanup EXIT INT TERM
 
-  i=1
+  local i=1
   while [ $i -le $test_run_timeout ]; do
     if nc -z "$_host" "$_test_id" 2>/dev/null; then
       break
@@ -285,8 +291,8 @@ cibuild__test_assert_response_kubernetes() {
 cibuild__test_assert_log_docker() {
   local pattern="$1"
   shift
-  
-  local ep_spec="keep"
+  local ep_spec="keep" \
+        test_log_timeout=$(cibuild_env_get 'test_log_timeout')
 
   case "$1" in
     keep|"")
@@ -303,9 +309,19 @@ cibuild__test_assert_log_docker() {
 
   cibuild__test_run_docker "$ep_spec" "$@"
   
-  docker logs "$_container"
+  local i=1
+  local success=0
+
+  while [ $i -le $test_log_timeout ]; do
+    if docker logs "$_container" 2>&1 | grep -qF "$pattern"; then
+      success=1
+      break
+    fi
+    sleep 1
+    i=$((i+1))
+  done
   
-  if ! docker logs "$_container" | grep -q "$pattern" >/dev/null 2>&1; then
+  if [ "$success" != "1" ]; then
     cibuild_log_err "[failed] Test docker log assertion failed: $pattern"
     docker rm -f "$_container"  >/dev/null 2>&1
     exit 1
@@ -317,11 +333,10 @@ cibuild__test_assert_log_docker() {
 
 cibuild__test_assert_log_kubernetes() {
   local pattern="$1"
-
   shift
-
   local ep_spec="keep" \
-        test_run_timeout=$(cibuild_env_get 'test_run_timeout')
+        test_run_timeout=$(cibuild_env_get 'test_run_timeout') \
+        test_log_timeout=$(cibuild_env_get 'test_log_timeout')
   
   case "$1" in
     keep|"")
@@ -339,15 +354,25 @@ cibuild__test_assert_log_kubernetes() {
   cibuild__test_run_kubernetes "$ep_spec" "$@"
 
   kubectl wait --for=condition=ready "pod/$_pod" "--timeout=${test_run_timeout}s"
+
+  local i=1
+  local success=0
+
+  while [ $i -le $test_log_timeout ]; do
+    if kubectl logs "$_pod" 2>&1 | grep -qF "$pattern"; then
+      success=1
+      break
+    fi
+    sleep 1
+    i=$((i+1))
+  done
   
-  #kubectl logs "$_pod"
-  
-  if ! kubectl logs "$_pod" | grep -q "$pattern" >/dev/null 2>&1; then
+  if [ "$success" != "1" ]; then
     cibuild_log_err "[failed] Test kubernetes log assertion failed: $pattern"
     kubectl delete pod "$_pod" --force  >/dev/null 2>&1
     exit 1
   fi
-
+    
   cibuild_log_info "[success] Test successful"
   kubectl delete pod "$_pod" --force  >/dev/null 2>&1
 }

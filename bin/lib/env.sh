@@ -39,6 +39,7 @@ test_file=cibuild.test.sh
 test_backend=docker
 test_service_account=
 test_run_timeout=60
+test_log_timeout=5
 deploy_enabled=1
 deploy_docker_attestation_autodetect=1
 deploy_docker_attestation_manifest=0
