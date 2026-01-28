@@ -19,6 +19,34 @@ _CIBUILD_CI_REF=""
 
 cibuild_ci_type() { printf '%s\n' "local"; }
 
+cibuild__get_project_path() {
+
+  local upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || true)
+  local remote=''
+
+  if [ -n "$upstream" ]; then
+    remote=${upstream%%/*}
+    url=$(git remote get-url "$remote" 2>/dev/null || true)
+    if [ -n "$url" ]; then
+      printf '%s\n' "$url" \
+      | sed -r 's#.+://[^/]+/##; s#.+@[^:]+:##; s#\.git$##'
+      return 0
+    fi
+  fi
+
+  # any remote
+  remote=$(git remote | head -n1)
+  if [ -n "$remote" ]; then
+    git remote get-url "$remote" \
+    | sed -r 's#.+://[^/]+/##; s#.+@[^:]+:##; s#\.git$##'
+    return 0
+  fi
+
+  printf '%s\n' "UNKNOWN_PROJECT_PATH" >&2
+  return 1
+}
+
+
 cibuild_ci_process_tag() {
   local tag="$1" \
         date=$(date +%F) \
@@ -79,7 +107,7 @@ cibuild_ci_registry_pass() {
 }
 
 cibuild_ci_image_path() {
-  printf '%s\n' "${CIBUILD_CI_IMAGE_PATH:-$CIBUILD_TARGET_IMAGE_PATH}"
+  printf '%s\n' "${CIBUILD_CI_IMAGE_PATH:-$(cibuild__get_project_path)}"
 }
 
 cibuild_ci_image() {
@@ -137,7 +165,7 @@ cibuild_ci_target_registry_pass() {
 }
 
 cibuild_ci_target_image_path() {
-  printf '%s\n' "${CIBUILD_TARGET_IMAGE_PATH:-}"
+  printf '%s\n' "${CIBUILD_TARGET_IMAGE_PATH:-$(cibuild__get_project_path)}"
 }
 
 cibuild_ci_target_tag() {
