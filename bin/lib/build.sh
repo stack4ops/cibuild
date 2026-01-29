@@ -261,7 +261,10 @@ cibuild__build_image_buildx() {
         platform \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         build_native=$(cibuild_env_get 'build_native') \
-        build_proxies=$(cibuild_env_get 'build_proxies') \
+        build_http_proxy=$(cibuild_env_get 'build_http_proxy') \
+        build_https_proxy=$(cibuild_env_get 'build_https_proxy') \
+        build_no_proxy=$(cibuild_env_get 'build_no_proxy') \
+        build_all=$(cibuild_env_get 'build_all_proxy') \
         build_opts=$(cibuild_env_get 'build_opts') \
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
@@ -308,7 +311,10 @@ cibuild__build_image_buildx() {
     image_tag="${build_tag}-${target_tag}-${platform_tag}"
     cibuild_log_debug "image_tag: $image_tag"
 
-    cibuild_log_debug "proxies: $build_proxies"
+    cibuild_log_debug "build_http_proxy: $build_http_proxy"
+    cibuild_log_debug "build_https_proxy: $build_https_proxy"
+    cibuild_log_debug "build_no_proxy: $build_no_proxy"
+    cibuild_log_debug "build_all_proxy: $build_all_proxy"
     
     if ! docker buildx build \
       --builder "${build_buildx_driver}" \
@@ -316,10 +322,10 @@ cibuild__build_image_buildx() {
       ${sbom_args:-} \
       ${provenance_args:-} \
       ${build_opts:-} \
-      --build-arg "HTTP_PROXY=${build_proxies}" \
-      --build-arg "HTTPS_PROXY=${build_proxies}" \
-      --build-arg "http_proxy=${build_proxies}" \
-      --build-arg "https_proxy=${build_proxies}" \
+      --build-arg "HTTP_PROXY=${build_http_proxy}" \
+      --build-arg "HTTPS_PROXY=${build_https_proxy}" \
+      --build-arg "NO_PROXY=${build_no_proxy}" \
+      --build-arg "ALL_PROXY=${build_all_proxy}" \
       ${build_arguments} \
       ${no_cache} \
       ${cache} \
@@ -338,7 +344,10 @@ cibuild__build_image_buildctl() {
         platform \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         build_native=$(cibuild_env_get 'build_native') \
-        build_proxies=$(cibuild_env_get 'build_proxies') \
+        build_http_proxy=$(cibuild_env_get 'build_http_proxy') \
+        build_https_proxy=$(cibuild_env_get 'build_https_proxy') \
+        build_no_proxy=$(cibuild_env_get 'build_no_proxy') \
+        build_all=$(cibuild_env_get 'build_all_proxy') \
         build_opts=$(cibuild_env_get 'build_opts') \
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
@@ -416,7 +425,10 @@ cibuild__build_image_buildctl() {
     image_tag="${build_tag}-${target_tag}-${platform_tag}"
     cibuild_log_debug "image_tag: $image_tag"
 
-    cibuild_log_debug "proxies: $build_proxies"
+    cibuild_log_debug "build_http_proxy: $build_http_proxy"
+    cibuild_log_debug "build_https_proxy: $build_https_proxy"
+    cibuild_log_debug "build_no_proxy: $build_no_proxy"
+    cibuild_log_debug "build_all_proxy: $build_all_proxy"
 
     if ! $build_command \
       build \
@@ -428,10 +440,10 @@ cibuild__build_image_buildctl() {
       ${sbom_args:-} \
       ${provenance_args:-} \
       ${build_opts:-} \
-      --opt build-arg:HTTP_PROXY=${build_proxies} \
-      --opt build-arg:HTTPS_PROXY=${build_proxies} \
-      --opt build-arg:http_proxy=${build_proxies} \
-      --opt build-arg:https_proxy=${build_proxies} \
+      --opt build-arg:HTTP_PROXY=${build_http_proxy} \
+      --opt build-arg:HTTPS_PROXY=${build_https_proxy} \
+      --opt build-arg:NO_PROXY=${build_no_proxy} \
+      --opt build-arg:ALL_PROXY=${build_all_proxy} \
       ${build_args:-} \
       ${no_cache:-} \
       ${cache:-} \
