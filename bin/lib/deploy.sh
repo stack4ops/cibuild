@@ -77,8 +77,6 @@ cibuild__deploy_create_index() {
   
   cibuild_log_debug "image index created: ${target_image}:${target_tag} for $platforms"
 
-  target_digest=$(regctl -v error manifest head ${target_image}:${target_tag})
-
   if [ "${deploy_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
     cibuild_log_debug "docker.io detected as target_registry set deploy_docker_attestation_manifest=1"
     deploy_docker_attestation_manifest=1
@@ -113,19 +111,15 @@ cibuild__deploy_create_index() {
       cibuild_main_err "error adding docker attestation manifest"
     fi
   fi
+
+  target_digest=$(regctl -v error manifest head ${target_image}:${target_tag})
+  cibuild_log_debug "target_digest 1: $target_digest"
+  
   if [ "${deploy_signature:-0}" = "1" ]; then
-    if ! export COSIGN_PASSWORD="" && cosign sign --key /tmp/cosign.key "${target_image}@${target_digest}"; then
-      cibuild_log_err "error signing ${target_image}@${target_digest}"
-      exit 1
-    fi
-    if ! cosign verify --key /tmp/cosign.pub "${target_image}@${target_digest}"; then
-      cibuild_log_err "error verifying ${target_image}@${target_digest}"
-      exit 1
-    fi
-    if ! cosign verify --key /tmp/cosign.pub "${target_image}:${target_tag}"; then
-      cibuild_log_err "error verifying ${target_image}:${target_tag}"
-      exit 1
-    fi
+    cibuild_log_debug "signing ${target_image}@${target_digest}"
+    export COSIGN_PASSWORD="" && cosign sign --key /tmp/cosign.key "${target_image}@${target_digest}"
+    cosign verify --key /tmp/cosign.pub "${target_image}@${target_digest}"
+    cosign verify --key /tmp/cosign.pub "${target_image}:${target_tag}"
   fi
 }
 
