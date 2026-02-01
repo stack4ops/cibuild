@@ -1,9 +1,26 @@
 #!/bin/sh
 # Package cibuild/deploy
 
+# All deployable artifacts and their attestations are signed 
+# by the same cryptographic identity to ensure a single, auditable trust root.
+
 # ---- Guard (like init once) ----
 [ -n "${_CIBUILD_DEPLOY_LOADED-}" ] && return
 _CIBUILD_DEPLOY_LOADED=1
+
+cibuild__get_docker_attestation_digest() {
+  local target_image=$(cibuild_ci_target_image)
+  local image_ref="$1"
+  local ref_digest=$(regctl -v error manifest head ${image_ref})
+  local attestation=$(regctl -v error manifest get "${target_image}@${ref_digest}" \
+    --format '{{range .Manifests}}{{if eq (index .Annotations "vnd.docker.reference.type") "attestation-manifest"}}{{.Digest}}{{end}}{{end}}') \
+    || {
+      cibuild_log_err "error getting attestation digest"
+      exit 1
+    }
+
+  printf '%s\n' "$attestation"
+}
 
 cibuild__deploy_copy_tag() {
   local copy_to_tag="$1" \
@@ -29,7 +46,8 @@ cibuild__deploy_create_index() {
         deploy_docker_attestation_manifest=$(cibuild_env_get 'deploy_docker_attestation_manifest') \
         target_registry=$(cibuild_ci_target_registry) \
         ref_digest \
-        image_digest
+        image_digest \
+        deploy_signature=$(cibuild_env_get 'deploy_signature')
 
   platforms=$(echo "$build_platforms" | tr ',' ' ')
 
@@ -59,10 +77,13 @@ cibuild__deploy_create_index() {
   
   cibuild_log_debug "image index created: ${target_image}:${target_tag} for $platforms"
 
+  target_digest=$(regctl -v error manifest head ${target_image}:${target_tag})
+
   if [ "${deploy_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
     cibuild_log_debug "docker.io detected as target_registry set deploy_docker_attestation_manifest=1"
     deploy_docker_attestation_manifest=1
   fi
+
   if [ "${deploy_docker_attestation_manifest}" = "1" ]; then
     cibuild_log_debug "add docker attestation manifest"
     # only one platform is required for referencing
@@ -78,7 +99,10 @@ cibuild__deploy_create_index() {
     platform_tag=$(echo "${platform}" | tr '/' '-')
     image_tag="${build_tag}-${target_tag}-${platform_tag}"
 
-    ref_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform unknown/unknown)
+    #ref_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform unknown/unknown)
+    ref_digest=$(cibuild__get_docker_attestation_digest "${target_image}:${image_tag}")
+    
+    cibuild_log_debug "ref_digest: $ref_digest"
     image_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform ${platform})
 
     if ! regctl -v error index add "${target_image}:${target_tag}" \
@@ -89,20 +113,20 @@ cibuild__deploy_create_index() {
       cibuild_main_err "error adding docker attestation manifest"
     fi
   fi
-  
-  # keeping arch_index 
-  #
-  # todo: check if new index is ok before deleting arch indices
-  # if [ "${keep_arch_index:-0}" = "0" ]; then
-  #   cibuild_log_debug "delete image tag"
-  #   for platform in ${platforms}; do
-  #     platform_tag=$(echo "${platform}" | tr '/' '-')
-  #     image_tag="${build_tag}-${platform_tag}"
-  #     digest=$(regctl -v error manifest head ${target_image:?}:${image_tag:?})
-  #     cibuild_log_debug $digest
-  #     regctl -v error manifest delete ${target_image:?}@${digest}
-  #   done
-  # fi
+  if [ "${deploy_signature:-0}" = "1" ]; then
+    if ! export COSIGN_PASSWORD="" && cosign sign --key /tmp/cosign.key "${target_image}@${target_digest}"; then
+      cibuild_log_err "error signing ${target_image}@${target_digest}"
+      exit 1
+    fi
+    if ! cosign verify --key /tmp/cosign.pub "${target_image}@${target_digest}"; then
+      cibuild_log_err "error verifying ${target_image}@${target_digest}"
+      exit 1
+    fi
+    if ! cosign verify --key /tmp/cosign.pub "${target_image}:${target_tag}"; then
+      cibuild_log_err "error verifying ${target_image}:${target_tag}"
+      exit 1
+    fi
+  fi
 }
 
 cibuild__deploy_additional_tags() {
@@ -198,13 +222,28 @@ cibuild__deploy_minor_tag() {
 }
 
 cibuild_deploy_run() {
-  local deploy_enabled=$(cibuild_env_get 'deploy_enabled')
+  local deploy_enabled=$(cibuild_env_get 'deploy_enabled') \
+        deploy_signature=$(cibuild_env_get 'deploy_signature') \
+        deploy_cosign_private_key=$(cibuild_env_get 'deploy_cosign_private_key') \
+        deploy_cosign_public_key=$(cibuild_env_get 'deploy_cosign_public_key')
 
   if [ "${deploy_enabled:?}" != "1" ]; then
     cibuild_log_info "deploy run not enabled: deploy run skipped"
     return
   fi
+  if [ "${deploy_signature:-0}" = "1" ] && [ -z "${deploy_cosign_private_key:-}" ]; then
+    cibuild_main_err "CIBUILD_DEPLOY_COSIGN_PRIVATE_KEY env var must not be empty"
+    exit 1
+  fi
 
+  if [ "${deploy_signature:-0}" = "1" ] && [ -z "${deploy_cosign_public_key:-}" ]; then
+    cibuild_main_err "CIBUILD_DEPLOY_COSIGN_PUBLIC_KEY env var must not be empty"
+    exit 1
+  fi
+
+  printf '%s\n' "$deploy_cosign_private_key" | base64 -d > /tmp/cosign.key
+  printf '%s\n' "$deploy_cosign_public_key" | base64 -d > /tmp/cosign.pub
+  
   cibuild__deploy_create_index
   cibuild__deploy_additional_tags
   cibuild__deploy_minor_tag

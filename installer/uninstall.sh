@@ -76,7 +76,20 @@ if [ $purge -eq 1 ]; then
   if [ "${DIND_ENABLED}" = "1" ]; then
     docker volume rm cibuilder-dind-data
   fi
+
   echo "if you want to update kubectl on next installation remove the binary manually"
+
+  echo "delete cosign private and public key"
+  
+  if [ -f  ./signing/cosign.key ]; then
+    echo "delete ./signing/cosign.key"
+    rm ./signing/cosign.key
+  fi
+
+  if [ -f  ./signing/cosign.pub ]; then
+    echo "delete ./signing/cosign.pub"
+    rm ./signing/cosign.pub
+  fi
 fi
 
 cd ${ORIG_PWD}

@@ -164,13 +164,16 @@ prepare() {
 
   arch=$(uname -m)
   os_arch="linux/amd64"
+  os_arch_min="amd64"
 
   case "$arch" in
       x86_64)
           os_arch="linux/amd64"
+          os_arch_min="amd64"
           ;;
       aarch64 | arm64)
           os_arch="linux/arm64"
+          os_arch_min="arm64"
           ;;
       *)
           echo "unknown architecture: $arch"
@@ -265,7 +268,26 @@ install() {
   if ! ./kc.sh get namespace buildkitk >/dev/null 2>&1; then
     echo "namespace buildkitk not exists, creating ..."
     create_buildkitk_namespace
-  fi 
+  fi
+
+  # cosign
+  if [ ! -f './cosign' ]; then
+    curl -L https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-${os_arch_min} >cosign
+    chmod +x './cosign'
+  fi
+
+  if [ ! -d "./signing" ]; then
+    mkdir "./signing"
+  fi
+
+  if [ ! -f "signing/codesign.key" ] || [ ! -f "signing/codesign.pub" ]; then
+      export COSIGN_PASSWORD="" && ./cosign generate-key-pair
+      mv cosign.key ./signing/
+      mv cosign.pub ./signing/
+      sed -i "s/^CIBUILD_DEPLOY_COSIGN_PRIVATE_KEY=.*/CIBUILD_DEPLOY_COSIGN_PRIVATE_KEY=$(base64 -w 0 ./signing/cosign.key)/g" .env
+      sed -i "s/^CIBUILD_DEPLOY_COSIGN_PUBLIC_KEY=.*/CIBUILD_DEPLOY_COSIGN_PUBLIC_KEY=$(base64 -w 0 ./signing/cosign.pub)/g" .env
+  fi
+  
 }
 
 finish() {

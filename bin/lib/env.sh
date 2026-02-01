@@ -48,6 +48,7 @@ deploy_docker_attestation_autodetect=1
 deploy_docker_attestation_manifest=0
 deploy_minor_tag_paging_limit=10000
 deploy_minor_tag_regex=
+deploy_signature=0
 '
 
 _CIBUILD_ENV_VARS=""
