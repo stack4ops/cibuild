@@ -4,3 +4,5 @@ kubeconfig
 mkcert
 installer/buildkit/certs
 installer/buildkit/*-certs.yaml
+cosign
+installer/signing/cosign.*
