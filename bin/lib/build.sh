@@ -316,6 +316,12 @@ cibuild__build_image_buildx() {
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
     cibuild_log_debug "build_all_proxy: $build_all_proxy"
     
+    if [ "${build_use_cache}" = "0" ]; then
+      no_cache="--no-cache"
+    else
+      no_cache=""
+    fi
+
     if ! docker buildx build \
       --builder "${build_buildx_driver}" \
       --platform "${platform}" \
@@ -429,6 +435,12 @@ cibuild__build_image_buildctl() {
     cibuild_log_debug "build_https_proxy: $build_https_proxy"
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
     cibuild_log_debug "build_all_proxy: $build_all_proxy"
+
+    if [ "${build_use_cache}" = "0" ]; then
+      no_cache="--no-cache"
+    else
+      no_cache=""
+    fi
 
     if ! $build_command \
       build \
