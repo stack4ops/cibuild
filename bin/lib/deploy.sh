@@ -8,6 +8,8 @@
 [ -n "${_CIBUILD_DEPLOY_LOADED-}" ] && return
 _CIBUILD_DEPLOY_LOADED=1
 
+cibuild__deploy_minortag=""
+
 cibuild__get_docker_attestation_digest() {
   local target_image=$(cibuild_ci_target_image)
   local image_ref="$1"
@@ -132,12 +134,20 @@ cibuild__deploy_additional_tags() {
   unset IFS
   
   for tag; do
-    local processed_tag=$(cibuild_ci_process_tag "$tag")
-    cibuild_log_debug "adding addtional tag $processed_tag"
-    if ! cibuild__deploy_copy_tag "$processed_tag"; then
-       cibuild_log_err "error assigning additional tag $processed_tag"
-       continue
-    fi
+    case "$tag" in
+      *__MINORTAG__*)
+      cibuild__deploy_minortag="$tag"
+      continue
+      ;;
+    default)
+      local processed_tag=$(cibuild_ci_process_tag "$tag")
+      cibuild_log_debug "adding addtional tag $processed_tag"
+      if ! cibuild__deploy_copy_tag "$processed_tag"; then
+        cibuild_log_err "error assigning additional tag $processed_tag"
+        continue
+      fi
+      ;;
+    esac
   done
 
 }
@@ -150,11 +160,20 @@ cibuild__deploy_minor_tag() {
         ref \
         current_digest \
 
+  sed_escape() {
+    printf '%s' "$1" | sed 's/[&\/]/\\&/g'
+  }
+
+  if [ -z "${cibuild__deploy_minortag:-}" ]; then
+    cibuild_log_debug "no additional __MINORTAG__ defined. skipping get_minor_tag"
+    return 0
+  fi
+
   if [ -z "${deploy_minor_tag_regex:-}" ]; then
     cibuild_log_debug "no minor tag regex defined. skipping get_minor_tag"
     return 0
   fi
-
+  
   ref="${base_image}:${base_tag}"
   
   # retrieve digest for base_tag
@@ -202,8 +221,10 @@ cibuild__deploy_minor_tag() {
 
     if [ "$tag_digest" = "$current_digest" ]; then
       cibuild_log_debug "found matching tag for $base_tag = $mt with same digest $current_digest"
-      cibuild_log_debug "adding minor tag $mt"
-      if ! cibuild__deploy_copy_tag "$mt"; then
+      local processed_mt=$(cibuild_ci_process_tag $cibuild__deploy_minortag)
+      processed_mt=$(printf '%s' "$processed_mt" | sed -e "s/__MINORTAG__/$(sed_escape "$mt")/g")
+      cibuild_log_debug "adding minor tag $processed_mt"
+      if ! cibuild__deploy_copy_tag "$processed_mt"; then
         return 1
       else
         return 0
