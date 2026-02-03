@@ -50,11 +50,15 @@ done
 
 LOCAL_LIBS_MOUNT=""
 LOCAL_ENTRYPOINT=""
+LOCAL_BUILDCTL_DAEMONLESS=""
 
 if [ "${USE_REPO_LIBS}" = "1" ]; then
   LOCAL_LIBS_MOUNT="-v ${LIB_PATH}:/home/user/bin"
   if [ "${USE_REPO_ENTRYPOINT}" = "1" ]; then
     LOCAL_ENTRYPOINT="--entrypoint=/home/user/bin/cibuild_entrypoint.sh"
+  fi
+  if [ "${USE_REPO_BUILDCTL_DAEMONLESS}" = "1" ]; then
+    LOCAL_BUILDCTL_DAEMONLESS="-v ${LIB_PATH}/buildctl-daemonless.sh:/usr/bin/buildctl-daemonless.sh"
   fi
 fi
 
@@ -64,6 +68,7 @@ docker run \
   --privileged \
   ${LOCAL_LIBS_MOUNT} \
   ${LOCAL_ENTRYPOINT} \
+  ${LOCAL_BUILDCTL_DAEMONLESS} \
   -v .:/repo \
   -w /repo \
   --env-file ~/.config/cibuild/.env \

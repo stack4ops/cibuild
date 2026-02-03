@@ -34,11 +34,11 @@ export BUILDKITD_FLAGS="${BUILDKITD_FLAGS:--oci-worker-no-process-sandbox}"
 : "${CIBUILD_RUN_CMD:?missing CIBUILD_RUN_CMD}"
 
 case "$CIBUILD_RUN_CMD" in
-  check)  exec cibuild -r check ;;
-  build)  exec cibuild -r build ;;
-  test)   exec cibuild -r test ;;
-  deploy) exec cibuild -r deploy ;;
-  all)    exec cibuild -r all ;;
+  check)  rootlesskit -- /bin/sh -c 'cibuild -r check' ;;
+  build)  rootlesskit -- /bin/sh -c 'cibuild -r build' ;;
+  test)   rootlesskit -- /bin/sh -c 'cibuild -r test' ;;
+  deploy) rootlesskit -- /bin/sh -c 'cibuild -r deploy' ;;
+  all)    rootlesskit -- /bin/sh -c 'cibuild -r all' ;;
   *)
     echo "unsupported CIBUILD_RUN_CMD: $CIBUILD_RUN_CMD"
     exit 1
