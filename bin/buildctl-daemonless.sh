@@ -42,7 +42,6 @@ startBuildkitd() {
         printf '%s\n' "use rootlesskit helper"
         helper=$ROOTLESSKIT
     fi
-    echo "running $helper $BUILDKITD $BUILDKITD_FLAGS --addr=$addr >$tmp/log 2>&1 &"
     $helper $BUILDKITD $BUILDKITD_FLAGS --addr=$addr >$tmp/log 2>&1 &
     pid=$!
     echo $pid >$tmp/pid
