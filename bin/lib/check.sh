@@ -90,6 +90,11 @@ cibuild_check_run() {
     cibuild_log_info "check run skipped"
     return
   fi
+
+  if ! cibuild_core_run_script check pre; then
+    exit 1
+  fi
+
   # only check in scheduled pipelines not commits or other triggers
   
   if [ "$(cibuild_ci_type)" != "local" ]; then
@@ -114,4 +119,8 @@ cibuild_check_run() {
     fi
   fi
   cibuild_log_info "check ok"
+
+  if ! cibuild_core_run_script check post; then
+    exit 1
+  fi
 }

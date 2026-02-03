@@ -456,7 +456,11 @@ cibuild_test_run() {
     cibuild_log_info "test run not enabled: test run skipped"
     return
   fi
-  
+
+  if ! cibuild_core_run_script test pre; then
+    exit 1
+  fi
+
   if [ -z "${test_file:-}" ]; then
     cibuild_log_info "test_file variable empty: test run skipped"
   fi
@@ -472,4 +476,7 @@ cibuild_test_run() {
   
   cibuild__test_image
 
+  if ! cibuild_core_run_script test post; then
+    exit 1
+  fi
 }

@@ -358,6 +358,28 @@ cibuild_core_get_platform_arch() {
   printf '%s\n' "$platform_arch"
 }
 
+cibuild_core_run_script() {
+  local run=$1
+  local stage=$2
+  local script=$(cibuild_env_get "${run}_${stage}_script")
+  if [ -n "${script}" ]; then
+    if [ -f "${script}" ]; then
+      if [ ! -x "${script}" ]; then
+        cibuild_log_err "${script} not executable"
+        return 1
+      fi
+      cibuild_log_info "running ${script}"
+      if ! . "./${script}"; then
+        cibuild_log_err "failed ${script}"
+      fi
+    else
+      cibuild_log_err "${script} not exists"
+      return 1
+    fi
+  fi
+  return 0
+}
+
 cibuild_core_init() {
   [ "${_CIBUILD_CORE_INIT_DONE:-}" = "1" ] && return
   _CIBUILD_CORE_INIT_DONE=1

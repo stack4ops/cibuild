@@ -476,6 +476,10 @@ cibuild_build_run() {
     return
   fi
 
+  if ! cibuild_core_run_script build pre; then
+    exit 1
+  fi
+
   if [ "${build_client}" = "buildx" ]; then
     if ! cibuild__build_detect_docker; then
       cibuild_main_err "buildx requires available dockerd"
@@ -483,5 +487,9 @@ cibuild_build_run() {
     cibuild__build_image_buildx
   else
     cibuild__build_image_buildctl
+  fi
+
+  if ! cibuild_core_run_script build post; then
+    exit 1
   fi
 }

@@ -246,6 +246,11 @@ cibuild_deploy_run() {
     cibuild_log_info "deploy run not enabled: deploy run skipped"
     return
   fi
+
+  if ! cibuild_core_run_script deploy pre; then
+    exit 1
+  fi
+
   if [ "${deploy_signature:-0}" = "1" ] && [ -z "${deploy_cosign_private_key:-}" ]; then
     cibuild_main_err "CIBUILD_DEPLOY_COSIGN_PRIVATE_KEY env var must not be empty"
     exit 1
@@ -263,4 +268,7 @@ cibuild_deploy_run() {
   cibuild__deploy_additional_tags
   cibuild__deploy_minor_tag
 
+  if ! cibuild_core_run_script deploy post; then
+    exit 1
+  fi
 }
