@@ -139,7 +139,7 @@ cibuild__deploy_additional_tags() {
       cibuild__deploy_minortag="$tag"
       continue
       ;;
-    default)
+      *)
       local processed_tag=$(cibuild_ci_process_tag "$tag")
       cibuild_log_debug "adding addtional tag $processed_tag"
       if ! cibuild__deploy_copy_tag "$processed_tag"; then
