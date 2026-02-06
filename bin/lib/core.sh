@@ -359,6 +359,10 @@ cibuild_core_get_platform_arch() {
 }
 
 cibuild_core_run_script() {
+  if [ -d "/tmp/cibuilder.locked" ]; then
+    cibuild_log_err "cibuilder.locked: script execution is not allowed"
+    return 0
+  fi
   local run=$1
   local stage=$2
   local script=$(cibuild_env_get "${run}_${stage}_script")
