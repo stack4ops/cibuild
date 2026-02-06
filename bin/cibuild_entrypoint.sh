@@ -4,7 +4,7 @@ set -eu
 
 PROJECT_DIR="${CI_PROJECT_DIR:-$(pwd)}"
 
-# only dynamic cibuild loading libs if not locked (p.e production gitlab-runner) 
+# only dynamic cibuild loading libs if not locked
 if [ ! -d "/tmp/cibuilder.locked" ]; then
     if [ -n "${CIBUILDER_BIN_URL:-}" ] || [ -n "${CIBUILDER_BIN_REF:-}" ]; then
         CIBUILDER_BIN_URL="${CIBUILDER_BIN_URL:-https://gitlab.com/stack4ops/public/cibuild/-/archive}"
