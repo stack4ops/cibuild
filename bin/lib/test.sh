@@ -19,7 +19,6 @@ cibuild__test_run_docker() {
   local ep_spec \
         cmd \
         cid \
-        state \
         i \
         test_run_timeout=$(cibuild_env_get 'test_run_timeout')
 
@@ -31,29 +30,52 @@ cibuild__test_run_docker() {
     _publish="-p ${_test_id}:${_target_port}"
   fi
 
-  cmd="docker run -d --rm --name $_container $_publish"
-
   if [ "$ep_spec" = "keep" ] && [ $# -eq 0 ]; then
     cibuild_log_debug "no entrypoint and no cmd"
-    cibuild_log_debug "trying: $cmd $_test_image"
-    cid=$($cmd "$_test_image" 2>/dev/null)
+    cid=$(
+      docker run -d --rm \
+        --name "$_container" \
+        ${_publish} \
+        "$_test_image"
+        2>/dev/null
+    )
     cibuild_log_debug $cid
   else
     case "$ep_spec" in
       keep)
         cibuild_log_debug "keep entrypoint with cmd: $@"
-        cibuild_log_debug "trying: $cmd $_test_image $@"
-        cid=$($cmd "$_test_image" "$@" 2>/dev/null)
+        cid=$(
+          docker run -d --rm \
+          --name "$_container" \
+          ${_publish} \
+          "$_test_image" \
+          "$@" \
+          2>/dev/null
+        )
         ;;
       "")
         cibuild_log_debug "remove entrypoint and call: $@"
-        cibuild_log_debug "trying: $cmd --entrypoint='' $_test_image $@"
-        cid=$($cmd "--entrypoint=''" "$_test_image" "$@" 2>/dev/null)
+        cid=$(
+          docker run -d --rm \
+          --name "$_container" \
+          ${_publish} \
+          --entrypoint='' \
+          "$_test_image" \
+          "$@" \
+          2>/dev/null
+        )
         ;;
       *)
         cibuild_log_debug "entrypoint: $ep_spec cmd: $@"
-        cibuild_log_debug "trying: $cmd --entrypoint=$ep_spec $_test_image $@"
-        cid=$($cmd "--entrypoint=$ep_spec" "$_test_image" "$@" 2>/dev/null)
+        cid=$(
+          docker run -d --rm \
+          --name "$_container" \
+          ${_publish} \
+          --entrypoint=$ep_spec \
+          "$_test_image" \
+          "$@" \
+          2>/dev/null
+        )
         ;;
     esac
   fi
@@ -71,11 +93,6 @@ cibuild__test_run_docker() {
 
     case "$status" in
       running)
-        # ret=
-        # if [ -n "$(docker logs "$_container" 2>/dev/null)" ]; then
-        #   echo "container running and logs available"
-        #   break
-        # fi
         if docker logs "$_container" 2>/dev/null; then
           echo "container running and logs available"
           sleep 1
@@ -183,6 +200,9 @@ cibuild__test_assert_response_docker() {
   _target_port="$1"
   assert_response="$2"
   shift 2
+  
+  cibuild_log_debug $_target_port
+  cibuild_log_debug $assert_response
 
   ep_spec="keep"
   case "$1" in
@@ -197,6 +217,7 @@ cibuild__test_assert_response_docker() {
   esac
 
   [ "$1" = "--" ] && shift
+
 
   cibuild__test_run_docker "$ep_spec" "$@"
 
@@ -379,8 +400,22 @@ cibuild__test_assert_log_kubernetes() {
 
 # ------ PUBLIC GENERIC ASSERTION ------
 assert_response() {
-  local test_backend=$(cibuild_env_get 'test_backend')
+  local test_backend=$(cibuild_env_get 'test_backend') \
+        target_image=$(cibuild_ci_target_image) \
+        target_tag=$(cibuild_ci_target_tag) \
+        build_tag=$(cibuild_env_get 'build_tag') \
+        platform_tag=$(cibuild_core_get_platform_tag) \
         
+  _test_id=$((1000 + RANDOM % 9999))
+  _test_image="${target_image}:${build_tag}-${target_tag}-${platform_tag}"
+  _container="testrun-${_test_id}"
+  _pod="testrun-${_test_id}"
+
+  cibuild_log_debug "_test_id $_test_id"
+  cibuild_log_debug "_test_image $_test_image"
+  cibuild_log_debug "_container $_container"
+  cibuild_log_debug "_pod $_pod"
+  
   case "$test_backend" in 
     docker)
       if ! cibuild__test_detect_docker; then
@@ -403,8 +438,22 @@ assert_response() {
 }
 
 assert_log() {
-  local test_backend=$(cibuild_env_get 'test_backend')
-        
+  local test_backend=$(cibuild_env_get 'test_backend') \
+        target_image=$(cibuild_ci_target_image) \
+        target_tag=$(cibuild_ci_target_tag) \
+        build_tag=$(cibuild_env_get 'build_tag') \
+        platform_tag=$(cibuild_core_get_platform_tag) \
+
+  _test_id=$((1000 + RANDOM % 9999))
+  _test_image="${target_image}:${build_tag}-${target_tag}-${platform_tag}"
+  _container="testrun-${_test_id}"
+  _pod="testrun-${_test_id}"
+
+  cibuild_log_debug "_test_id $_test_id"
+  cibuild_log_debug "_test_image $_test_image"
+  cibuild_log_debug "_container $_container"
+  cibuild_log_debug "_pod $_pod"
+      
   case "$test_backend" in 
     docker)
       if ! cibuild__test_detect_docker; then
@@ -429,28 +478,73 @@ assert_log() {
 # ---------- RUN ----------
 
 cibuild__test_image() {
-  local target_image=$(cibuild_ci_target_image) \
-        target_tag=$(cibuild_ci_target_tag) \
-        build_tag=$(cibuild_env_get 'build_tag') \
-        platform_tag=$(cibuild_core_get_platform_tag) \
-        test_file=$(cibuild_env_get 'test_file')
-
-  _test_id=$((1000 + RANDOM % 9999))
-  _test_image="${target_image}:${build_tag}-${target_tag}-${platform_tag}"
-  _container="testrun-${_test_id}" # docker
-  _pod="testrun-${_test_id}" # kubernetes
-
-  cibuild_log_debug "_test_id $_test_id"
-  cibuild_log_debug "_test_image $_test_image"
-  cibuild_log_debug "_container $_container"
-  cibuild_log_debug "_pod $_pod"
+  mode=$1
   
-  . "$(pwd)/${test_file}"
+  cibuild_log_debug "test mode: $mode"
+
+  local test_script_file=$(cibuild_env_get 'test_script_file') \
+        test_assert_file=$(cibuild_env_get 'test_assert_file')
+
+  case "$mode" in
+    script)
+      cibuild_log_debug "script"
+      . "$(pwd)/${test_script_file}"
+      ;;
+    assert)
+      cibuild_log_debug "assert"
+
+      jq -c '
+      .[] |
+      {
+        type,
+        entrypoint:
+        (if has("entrypoint")
+        then
+          if (.entrypoint | type == "string")
+          then .entrypoint
+          else error("entrypoint must be string")
+          end
+        else
+          "keep"
+        end),
+        port: (.port // ""),
+        assert,
+        cmd: (.cmd // [])
+      }
+      ' "$(pwd)/${test_assert_file}" |
+      while IFS= read -r item; do
+
+        type=$(echo "$item" | jq -r '.type')
+        entrypoint=$(echo "$item" | jq -r '.entrypoint')
+        port=$(echo "$item" | jq -r '.port')
+        assert=$(echo "$item" | jq -r '.assert')
+        set --
+        while IFS= read -r arg; do
+          set -- "$@" "$arg"
+        done <<EOF
+$(echo "$item" | jq -r '.cmd[]')
+EOF
+        case "$type" in
+          log)
+            assert_log "$assert" "$entrypoint" "$@"
+            ;;
+          response)
+            assert_response "$port" "$assert" "$@"
+            ;;
+          *)
+            cibuild_main_err "unknown assert type: $type"
+            ;;
+        esac
+      done
+      ;;
+  esac
 }
+
 
 cibuild_test_run() {
   local test_enabled=$(cibuild_env_get 'test_enabled') \
-        test_file=$(cibuild_env_get 'test_file')
+        test_script_file=$(cibuild_env_get 'test_script_file') \
+        test_assert_file=$(cibuild_env_get 'test_assert_file')
   
   if [ "${test_enabled:?}" != "1" ]; then
     cibuild_log_info "test run not enabled: test run skipped"
@@ -461,20 +555,26 @@ cibuild_test_run() {
     exit 1
   fi
 
-  if [ -z "${test_file:-}" ]; then
-    cibuild_log_info "test_file variable empty: test run skipped"
-  fi
-  
-  local test_file_path="$(pwd)/${test_file}"
-  if [ ! -f "$test_file_path" ]; then
-    cibuild_main_err "$test_file_path not exists."
+  local test_script_file_path="$(pwd)/${test_script_file}"
+  if [ ! -f "$test_script_file_path" ]; then
+    cibuild_log_info "no test_script_file: ${test_script_file}"
+  else
+    if [ ! -x "$test_script_file_path" ]; then
+      cibuild_main_err "${test_script_file} not executable."
+    fi
+    if [ -d "/tmp/cibuilder.locked" ]; then
+      cibuild_log_err "cibuilder.locked: script execution is not allowed"
+    else
+      cibuild__test_image script
+    fi
   fi
 
-  if [ ! -x "$test_file_path" ]; then
-    cibuild_main_err "$test_file_path not executable."
+  local test_assert_file_path="$(pwd)/${test_assert_file}"
+  if [ ! -f "$test_assert_file_path" ]; then
+    cibuild_log_info "no test_assert_file: ${test_assert_file}"
+  else
+    cibuild__test_image assert
   fi
-  
-  cibuild__test_image
 
   if ! cibuild_core_run_script test post; then
     exit 1
