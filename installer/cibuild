@@ -51,6 +51,7 @@ done
 LOCAL_LIBS_MOUNT=""
 LOCAL_ENTRYPOINT=""
 LOCAL_BUILDCTL_DAEMONLESS=""
+LOCAL_LOCKED_VOLUME=""
 
 if [ "${USE_REPO_LIBS}" = "1" ]; then
   LOCAL_LIBS_MOUNT="-v ${LIB_PATH}:/home/user/bin"
@@ -62,6 +63,10 @@ if [ "${USE_REPO_LIBS}" = "1" ]; then
   fi
 fi
 
+if [ "${CIBUILDER_LOCKED}" = "1" ]; then
+  LOCAL_LOCKED_VOLUME="-v locked:/tmp/cibuilder.locked:ro"
+fi
+
 docker run \
   --rm \
   --network ${COMPOSE_PROJECT_NAME}-net \
@@ -69,6 +74,7 @@ docker run \
   ${LOCAL_LIBS_MOUNT} \
   ${LOCAL_ENTRYPOINT} \
   ${LOCAL_BUILDCTL_DAEMONLESS} \
+  ${LOCAL_LOCKED_VOLUME} \
   -v .:/repo \
   -w /repo \
   --env-file ~/.config/cibuild/.env \
