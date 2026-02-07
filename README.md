@@ -1,12 +1,12 @@
-# CIbuild
+# cibuild
 ----------
 
-A workflow CLI tool for building, testing, and publishing container images using GitLab and Buildkit. It is included as part of the cibuilder image (see: https://gitlab.com/stack4ops/public/images/generic/cibuilder).
+A workflow CLI tool for building, testing, and publishing container images using various CI/CD Plattforms. It is included as part of the cibuilder image (see: https://gitlab.com/stack4ops/public/images/generic/cibuilder).
 
 # Purpose
 ----------
 
-The purpose of cibuild is to streamline and standardize the creation and maintenance of container images within a GitLab CI pipeline.
+The purpose of cibuild is to streamline and standardize the lifecycle of container images within a GitLab CI pipeline.
 
 # Usage
 ----------
@@ -90,7 +90,7 @@ The flow of embedded check:
 
 The check-stage only runs on scheduled trigger.
 
-You can find an example for a scheduled pipeline here: https://gitlab.com/stack4ops/public/images/generic/test
+You can find a demo repo here: https://gitlab.com/stack4ops/public/images/generic/cibuild-demo
 
 ### Commit trigger
 
