@@ -199,7 +199,7 @@ cibuild__deploy_minor_tag() {
     all_tags="$all_tags\n$tags"
     # store last tag
     last="$(echo "$tags" | tail -n 1)"
-    cibuild_log_dump "$last"
+    cibuild_log_dump "paging starting from $last"
     # no endless loop
     if [ "$last" = "$seen_last" ]; then
       cibuild_log_info "paging stalled at tag: $last" >&2
