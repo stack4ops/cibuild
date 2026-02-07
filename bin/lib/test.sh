@@ -16,13 +16,13 @@ _pod=''
 
 # ---------- RUN HELPERS ----------
 cibuild__test_run_docker() {
-  local ep_spec \
+  local entrypoint="$1" \
         cmd \
         cid \
         i \
         test_run_timeout=$(cibuild_env_get 'test_run_timeout')
 
-  ep_spec="${1:-keep}"
+  #shift entrypoint
   shift
 
   if [ -n "${_target_port}" ]; then
@@ -30,7 +30,7 @@ cibuild__test_run_docker() {
     _publish="-p ${_test_id}:${_target_port}"
   fi
 
-  if [ "$ep_spec" = "keep" ] && [ $# -eq 0 ]; then
+  if [ "$entrypoint" = "keep" ] && [ $# -eq 0 ]; then
     cibuild_log_debug "no entrypoint and no cmd"
     cid=$(
       docker run -d --rm \
@@ -41,7 +41,7 @@ cibuild__test_run_docker() {
     )
     cibuild_log_debug $cid
   else
-    case "$ep_spec" in
+    case "$entrypoint" in
       keep)
         cibuild_log_debug "keep entrypoint with cmd: $@"
         cid=$(
@@ -66,12 +66,12 @@ cibuild__test_run_docker() {
         )
         ;;
       *)
-        cibuild_log_debug "entrypoint: $ep_spec cmd: $@"
+        cibuild_log_debug "entrypoint: $entrypoint cmd: $@"
         cid=$(
           docker run -d --rm \
           --name "$_container" \
           ${_publish} \
-          --entrypoint=$ep_spec \
+          --entrypoint=$entrypoint \
           "$_test_image" \
           "$@" \
           2>/dev/null
@@ -191,38 +191,26 @@ cibuild__test_detect_kubernetes() {
 
 # ---------- ASSERT RESPONSE ----------
 cibuild__test_assert_response_docker() {
-  local ep_spec \
-        assert_response \
-        port_accessible \
-        test_run_timeout=$(cibuild_env_get 'test_run_timeout') \
-        i
-
-  _target_port="$1"
-  assert_response="$2"
-  shift 2
+  local assert="$1" \
+        entrypoint="$3" \
+        test_run_timeout=$(cibuild_env_get 'test_run_timeout')
+  
+  # global
+  _target_port="$2"
+  
+  shift 3
   
   cibuild_log_debug $_target_port
-  cibuild_log_debug $assert_response
+  cibuild_log_debug $assert
 
-  ep_spec="keep"
-  case "$1" in
-    keep|"")
-      ep_spec="$1"
-      shift
-      ;;
-    *)
-      ep_spec="$1"
-      shift
-      ;;
-  esac
+  if [ -n "$@" ]; then
+    cibuild__test_run_docker "$entrypoint" "$@"
+  else
+    cibuild__test_run_docker "$entrypoint"
+  fi
 
-  [ "$1" = "--" ] && shift
-
-
-  cibuild__test_run_docker "$ep_spec" "$@"
-
-  port_accessible=0
-  i=1
+  local port_accessible=0
+  local i=1
   while [ $i -le 15 ]; do
     if nc -z "$_host" "$_test_id" 2>/dev/null; then
       port_accessible=1
@@ -238,7 +226,7 @@ cibuild__test_assert_response_docker() {
     exit 1
   fi
 
-  if ! curl --silent -m 5 "http://${_host}:${_test_id}/" | grep "$assert_response" >/dev/null 2>&1; then
+  if ! curl --silent -m 5 "http://${_host}:${_test_id}/" | grep "$assert" >/dev/null 2>&1; then
     cibuild_log_err "[failed] Test failed!"
     docker rm -f "$_container" >/dev/null 2>&1
     exit 1
@@ -249,36 +237,28 @@ cibuild__test_assert_response_docker() {
 }
 
 cibuild__test_assert_response_kubernetes() {
-  local ep_spec \
-        assert_response \
-        test_run_timeout=$(cibuild_env_get 'test_run_timeout') \
-        PF_PID \
-        i
+  local assert="$1" \
+        entrypoint="$3" \
+        test_run_timeout=$(cibuild_env_get 'test_run_timeout')
+  
+  # global
+  _target_port="$2"
+  
+  shift 3
+  
+  cibuild_log_debug $_target_port
+  cibuild_log_debug $assert
 
-  _target_port="$1"
-  assert_response="$2"
-  shift 2
-
-  ep_spec="keep"
-  case "$1" in
-    keep|"")
-      ep_spec="$1"
-      shift
-      ;;
-    *)
-      ep_spec="$1"
-      shift
-      ;;
-  esac
-
-  [ "$1" = "--" ] && shift
-
-  cibuild__test_run_kubernetes "$ep_spec" "$@"
+  if [ -n "$@" ]; then
+    cibuild__test_run_kubernetes "$entrypoint" "$@"
+  else
+    cibuild__test_run_kubernetes "$entrypoint"
+  fi
 
   kubectl wait --for=condition=ready "pod/$_pod" "--timeout=${test_run_timeout}s"
 
   setsid kubectl port-forward "pod/$_pod" "$_test_id:$_target_port" >/dev/null 2>&1 &
-  PF_PID=$!
+  local PF_PID=$!
 
   cleanup() {
     kill -TERM -- -"$PF_PID" 2>/dev/null || true
@@ -301,7 +281,7 @@ cibuild__test_assert_response_kubernetes() {
     cibuild_main_err "[failed] could not forward port"
   fi
 
-  if ! curl --silent -m 5 "http://${_host}:${_test_id}/" | grep "$assert_response" >/dev/null 2>&1; then
+  if ! curl --silent -m 5 "http://${_host}:${_test_id}/" | grep "$assert" >/dev/null 2>&1; then
     cibuild_main_err "[failed] Test failed!"
   fi
 
@@ -310,31 +290,26 @@ cibuild__test_assert_response_kubernetes() {
 
 # ---------- ASSERT LOG ----------
 cibuild__test_assert_log_docker() {
-  local pattern="$1"
-  shift
-  local ep_spec="keep" \
+  local assert="$1" \
+        entrypoint="$2" \
+        test_run_timeout=$(cibuild_env_get 'test_run_timeout') \
         test_log_timeout=$(cibuild_env_get 'test_log_timeout')
+  
+  shift 2
 
-  case "$1" in
-    keep|"")
-      ep_spec="$1"
-      shift
-      ;;
-    *)
-      ep_spec="$1"
-      shift
-      ;;
-  esac
+  cibuild_log_debug $assert
 
-  [ "$1" = "--" ] && shift
-
-  cibuild__test_run_docker "$ep_spec" "$@"
+  if [ -n "$1" ]; then
+    cibuild__test_run_docker "$entrypoint" "$@"
+  else
+    cibuild__test_run_docker "$entrypoint"
+  fi
   
   local i=1
   local success=0
 
   while [ $i -le $test_log_timeout ]; do
-    if docker logs "$_container" 2>&1 | grep -qF "$pattern"; then
+    if docker logs "$_container" 2>&1 | grep -qF "$assert"; then
       success=1
       break
     fi
@@ -343,7 +318,7 @@ cibuild__test_assert_log_docker() {
   done
   
   if [ "$success" != "1" ]; then
-    cibuild_log_err "[failed] Test docker log assertion failed: $pattern"
+    cibuild_log_err "[failed] Test docker log assertion failed: $assert"
     docker rm -f "$_container"  >/dev/null 2>&1
     exit 1
   fi
@@ -353,26 +328,20 @@ cibuild__test_assert_log_docker() {
 }
 
 cibuild__test_assert_log_kubernetes() {
-  local pattern="$1"
-  shift
-  local ep_spec="keep" \
+  local assert="$1" \
+        entrypoint="$2" \
         test_run_timeout=$(cibuild_env_get 'test_run_timeout') \
         test_log_timeout=$(cibuild_env_get 'test_log_timeout')
   
-  case "$1" in
-    keep|"")
-      ep_spec="$1"
-      shift
-      ;;
-    *)
-      ep_spec="$1"
-      shift
-      ;;
-  esac
+  shift 2
+  
+  cibuild_log_debug $assert
 
-  [ "$1" = "--" ] && shift
-
-  cibuild__test_run_kubernetes "$ep_spec" "$@"
+  if [ -n "$1" ]; then
+    cibuild__test_run_kubernetes "$entrypoint" "$@"
+  else
+    cibuild__test_run_kubernetes "$entrypoint"
+  fi
 
   kubectl wait --for=condition=ready "pod/$_pod" "--timeout=${test_run_timeout}s"
 
@@ -380,7 +349,7 @@ cibuild__test_assert_log_kubernetes() {
   local success=0
 
   while [ $i -le $test_log_timeout ]; do
-    if kubectl logs "$_pod" 2>&1 | grep -qF "$pattern"; then
+    if kubectl logs "$_pod" 2>&1 | grep -qF "$assert"; then
       success=1
       break
     fi
@@ -389,7 +358,7 @@ cibuild__test_assert_log_kubernetes() {
   done
   
   if [ "$success" != "1" ]; then
-    cibuild_log_err "[failed] Test kubernetes log assertion failed: $pattern"
+    cibuild_log_err "[failed] Test kubernetes log assertion failed: $assert"
     kubectl delete pod "$_pod" --force  >/dev/null 2>&1
     exit 1
   fi
@@ -529,7 +498,7 @@ EOF
             assert_log "$assert" "$entrypoint" "$@"
             ;;
           response)
-            assert_response "$port" "$assert" "$@"
+            assert_response "$assert" "$port" "$entrypoint" "$@"
             ;;
           *)
             cibuild_main_err "unknown assert type: $type"
