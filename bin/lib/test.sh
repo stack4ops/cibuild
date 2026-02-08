@@ -19,7 +19,6 @@ cibuild__test_run_docker() {
   local entrypoint="$1" \
         cmd \
         cid \
-        i \
         test_run_timeout=$(cibuild_env_get 'test_run_timeout')
 
   #shift entrypoint
@@ -84,7 +83,7 @@ cibuild__test_run_docker() {
     cibuild_main_err "[failed] container could not be started."
   fi
   
-  i=1
+  local i=1
   while [ "$i" -le "$test_run_timeout" ]; do
     status=$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || echo unknown)
     running=$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null || echo false)
