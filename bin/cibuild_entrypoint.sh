@@ -33,14 +33,36 @@ export BUILDKITD_FLAGS="${BUILDKITD_FLAGS:--oci-worker-no-process-sandbox}"
 
 : "${CIBUILD_RUN_CMD:?missing CIBUILD_RUN_CMD}"
 
+exec_cmd() {
+    if [ "${CIBUILDER_ROOTLESS_KIT:-1}" = "1" ]; then
+        echo "running in rootlesskit"
+        rootlesskit -- /bin/sh -c "cibuild -r $CIBUILD_RUN_CMD"
+    else
+        echo "running without rootlesskit"
+        cibuild -r $CIBUILD_RUN_CMD
+    fi
+}
+
 case "$CIBUILD_RUN_CMD" in
-  check)  rootlesskit -- /bin/sh -c 'cibuild -r check' ;;
-  build)  rootlesskit -- /bin/sh -c 'cibuild -r build' ;;
-  test)   rootlesskit -- /bin/sh -c 'cibuild -r test' ;;
-  deploy) rootlesskit -- /bin/sh -c 'cibuild -r deploy' ;;
-  all)    rootlesskit -- /bin/sh -c 'cibuild -r all' ;;
+  check)  exec_cmd ;;
+  build)  exec_cmd ;;
+  test)   exec_cmd ;;
+  deploy) exec_cmd ;;
+  all)    exec_cmd ;;
   *)
     echo "unsupported CIBUILD_RUN_CMD: $CIBUILD_RUN_CMD"
     exit 1
     ;;
 esac
+
+# case "$CIBUILD_RUN_CMD" in
+#   check)  rootlesskit -- /bin/sh -c 'cibuild -r check' ;;
+#   build)  rootlesskit -- /bin/sh -c 'cibuild -r build' ;;
+#   test)   rootlesskit -- /bin/sh -c 'cibuild -r test' ;;
+#   deploy) rootlesskit -- /bin/sh -c 'cibuild -r deploy' ;;
+#   all)    rootlesskit -- /bin/sh -c 'cibuild -r all' ;;
+#   *)
+#     echo "unsupported CIBUILD_RUN_CMD: $CIBUILD_RUN_CMD"
+#     exit 1
+#     ;;
+# esac
