@@ -368,6 +368,9 @@ cibuild__test_assert_log_kubernetes() {
 
 # ------ PUBLIC GENERIC ASSERTION ------
 assert_response() {
+  if [ $# -lt 3 ]; then
+    cibuild_main_err "Usage: assert_repspone assert port entrypoint:'keep'=keep entrypoint|''=remove entrypoint|'entrypoint p.e. /bin/sh' optional cmd params p.e. '-c' 'ls -lat'"
+  fi
   local test_backend=$(cibuild_env_get 'test_backend') \
         target_image=$(cibuild_ci_target_image) \
         target_tag=$(cibuild_ci_target_tag) \
@@ -406,6 +409,9 @@ assert_response() {
 }
 
 assert_log() {
+  if [ $# -lt 2 ]; then
+    cibuild_main_err "Usage: assert_log assert entrypoint:'keep'=keep entrypoint|''=remove entrypoint|'entrypoint p.e. /bin/sh' optional cmd params p.e. '-c' 'ls -lat'"
+  fi
   local test_backend=$(cibuild_env_get 'test_backend') \
         target_image=$(cibuild_ci_target_image) \
         target_tag=$(cibuild_ci_target_tag) \
