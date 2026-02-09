@@ -185,8 +185,6 @@ cibuild__build_get_import_cache_args() {
         target_tag=$(cibuild_ci_target_tag) \
         build_import_cache=$(cibuild_env_get 'build_import_cache')
 
-  #local cache_tag="${build_tag}-${target_tag}-cache-${arch}"
-
   case "$build_import_cache" in
     "")
       printf '%s\n' ""
@@ -264,7 +262,6 @@ cibuild__build_image_buildx() {
         build_opts=$(cibuild_env_get 'build_opts') \
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
-        build_tag=$(cibuild_env_get 'build_tag') \
         target_image=$(cibuild_ci_target_image) \
         target_tag=$(cibuild_ci_target_tag) \
         container_file=$(cibuild_core_container_file) \
@@ -349,7 +346,6 @@ cibuild__build_image_buildctl() {
         build_opts=$(cibuild_env_get 'build_opts') \
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
-        build_tag=$(cibuild_env_get 'build_tag') \
         target_image=$(cibuild_ci_target_image) \
         target_tag=$(cibuild_ci_target_tag) \
         container_file=$(cibuild_core_container_file) \
@@ -467,7 +463,6 @@ cibuild__build_image_kaniko() {
         build_opts=$(cibuild_env_get 'build_opts') \
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
-        build_tag=$(cibuild_env_get 'build_tag') \
         target_image=$(cibuild_ci_target_image) \
         target_tag=$(cibuild_ci_target_tag) \
         container_file=$(cibuild_core_container_file) \

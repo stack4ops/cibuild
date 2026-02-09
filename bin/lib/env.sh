@@ -37,7 +37,6 @@ build_import_cache=ci_registry
 build_sbom=1
 build_provenance=1
 build_provenance_mode=max
-build_tag=build
 build_buildx_driver=dockercontainer
 build_buildkit_service_account=
 build_kubernetes_replicas=1
