@@ -3,6 +3,7 @@
 set -eu
 
 PROJECT_DIR="${CI_PROJECT_DIR:-$(pwd)}"
+export DOCKER_CONFIG="${DOCKER_CONFIG:-/home/user/.docker}"
 
 # only dynamic cibuild loading libs if not locked
 if [ ! -d "/tmp/cibuilder.locked" ]; then
@@ -54,15 +55,3 @@ case "$CIBUILD_RUN_CMD" in
     exit 1
     ;;
 esac
-
-# case "$CIBUILD_RUN_CMD" in
-#   check)  rootlesskit -- /bin/sh -c 'cibuild -r check' ;;
-#   build)  rootlesskit -- /bin/sh -c 'cibuild -r build' ;;
-#   test)   rootlesskit -- /bin/sh -c 'cibuild -r test' ;;
-#   deploy) rootlesskit -- /bin/sh -c 'cibuild -r deploy' ;;
-#   all)    rootlesskit -- /bin/sh -c 'cibuild -r all' ;;
-#   *)
-#     echo "unsupported CIBUILD_RUN_CMD: $CIBUILD_RUN_CMD"
-#     exit 1
-#     ;;
-# esac
