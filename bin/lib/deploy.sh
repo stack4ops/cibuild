@@ -42,8 +42,6 @@ cibuild__deploy_create_index() {
         target_tag=$(cibuild_ci_target_tag) \
         platforms \
         build_platforms=$(cibuild_env_get 'build_platforms') \
-        build_tag=$(cibuild_env_get 'build_tag') \
-        image_tag \
         deploy_docker_attestation_autodetect=$(cibuild_env_get 'deploy_docker_attestation_autodetect') \
         deploy_docker_attestation_manifest=$(cibuild_env_get 'deploy_docker_attestation_manifest') \
         target_registry=$(cibuild_ci_target_registry) \
@@ -58,8 +56,7 @@ cibuild__deploy_create_index() {
 
   for platform in $platforms; do
     platform_tag=$(echo "$platform" | tr '/' '-')
-    image_tag="${build_tag}-${target_tag}-${platform_tag}"
-    ref="${target_image}:${image_tag}"
+    ref="${target_image}-${platform_tag}:${target_tag}"
 
     if regctl -v error manifest head "$ref" >/dev/null 2>&1; then
       create_args="$create_args --ref $ref --platform $platform"
@@ -97,13 +94,12 @@ cibuild__deploy_create_index() {
       *) platform="$first" ;;
     esac
     platform_tag=$(echo "${platform}" | tr '/' '-')
-    image_tag="${build_tag}-${target_tag}-${platform_tag}"
-
+    
     #ref_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform unknown/unknown)
-    ref_digest=$(cibuild__get_docker_attestation_digest "${target_image}:${image_tag}")
+    ref_digest=$(cibuild__get_docker_attestation_digest "${target_image}-${platform_tag}:${target_tag}")
     
     cibuild_log_debug "ref_digest: $ref_digest"
-    image_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform ${platform})
+    image_digest=$(regctl -v error manifest head ${target_image}-${platform_tag}:${target_tag} --platform ${platform})
 
     if ! regctl -v error index add "${target_image}:${target_tag}" \
       --ref ${target_image}@${ref_digest} \

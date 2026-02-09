@@ -378,7 +378,7 @@ assert_response() {
         platform_tag=$(cibuild_core_get_platform_tag) \
         
   _test_id=$((1000 + RANDOM % 9999))
-  _test_image="${target_image}:${build_tag}-${target_tag}-${platform_tag}"
+  _test_image="${target_image}-${platform_tag}:${target_tag}"
   _container="testrun-${_test_id}"
   _pod="testrun-${_test_id}"
 
@@ -419,7 +419,7 @@ assert_log() {
         platform_tag=$(cibuild_core_get_platform_tag) \
 
   _test_id=$((1000 + RANDOM % 9999))
-  _test_image="${target_image}:${build_tag}-${target_tag}-${platform_tag}"
+  _test_image="${target_image}-${platform_tag}:${target_tag}"
   _container="testrun-${_test_id}"
   _pod="testrun-${_test_id}"
 
