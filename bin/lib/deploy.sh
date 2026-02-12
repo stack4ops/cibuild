@@ -27,10 +27,10 @@ cibuild__get_docker_attestation_digest() {
 cibuild__deploy_copy_tag() {
   local copy_to_tag="$1" \
         target_image=$(cibuild_ci_target_image) \
-        target_tag=$(cibuild_ci_target_tag)
+        build_tag=$(cibuild_ci_build_tag)
         
-  if ! regctl -v error image copy ${target_image}:${target_tag} ${target_image}:${copy_to_tag} >/dev/null 2>&1; then
-      cibuild_log_err "failed to copy ${target_image}:${target_tag} to ${target_image}:${copy_to_tag}"
+  if ! regctl -v error image copy ${target_image}:${build_tag} ${target_image}:${copy_to_tag} >/dev/null 2>&1; then
+      cibuild_log_err "failed to copy ${target_image}:${build_tag} to ${target_image}:${copy_to_tag}"
       return 1
   fi
   return 0
@@ -39,7 +39,7 @@ cibuild__deploy_copy_tag() {
 cibuild__deploy_create_index() {
   
   local target_image=$(cibuild_ci_target_image) \
-        target_tag=$(cibuild_ci_target_tag) \
+        build_tag=$(cibuild_ci_build_tag) \
         platforms \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         deploy_docker_attestation_autodetect=$(cibuild_env_get 'deploy_docker_attestation_autodetect') \
@@ -56,7 +56,7 @@ cibuild__deploy_create_index() {
 
   for platform in $platforms; do
     platform_tag=$(echo "$platform" | tr '/' '-')
-    ref="${target_image}-${platform_tag}:${target_tag}"
+    ref="${target_image}-${platform_tag}:${build_tag}"
 
     if regctl -v error manifest head "$ref" >/dev/null 2>&1; then
       create_args="$create_args --ref $ref --platform $platform"
@@ -67,14 +67,14 @@ cibuild__deploy_create_index() {
   done
 
   if [ "$found" -eq 0 ]; then
-    cibuild_main_err "no platform images found, cannot create index ${target_image}:${target_tag}"
+    cibuild_main_err "no platform images found, cannot create index ${target_image}:${build_tag}"
   fi
 
-  if ! regctl -v error index create "$target_image:$target_tag" $create_args; then
-    cibuild_main_err "error creating image index ${target_image}:${target_tag}"
+  if ! regctl -v error index create "$target_image:$build_tag" $create_args; then
+    cibuild_main_err "error creating image index ${target_image}:${build_tag}"
   fi
   
-  cibuild_log_debug "image index created: ${target_image}:${target_tag} for $platforms"
+  cibuild_log_debug "image index created: ${target_image}:${build_tag} for $platforms"
 
   if [ "${deploy_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
     cibuild_log_debug "docker.io detected as target_registry set deploy_docker_attestation_manifest=1"
@@ -96,12 +96,12 @@ cibuild__deploy_create_index() {
     platform_tag=$(echo "${platform}" | tr '/' '-')
     
     #ref_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform unknown/unknown)
-    ref_digest=$(cibuild__get_docker_attestation_digest "${target_image}-${platform_tag}:${target_tag}")
+    ref_digest=$(cibuild__get_docker_attestation_digest "${target_image}-${platform_tag}:${build_tag}")
     
     cibuild_log_debug "ref_digest: $ref_digest"
-    image_digest=$(regctl -v error manifest head ${target_image}-${platform_tag}:${target_tag} --platform ${platform})
+    image_digest=$(regctl -v error manifest head ${target_image}-${platform_tag}:${build_tag} --platform ${platform})
 
-    if ! regctl -v error index add "${target_image}:${target_tag}" \
+    if ! regctl -v error index add "${target_image}:${build_tag}" \
       --ref ${target_image}@${ref_digest} \
       --desc-platform unknown/unknown \
       --desc-annotation vnd.docker.reference.type=attestation-manifest \
@@ -110,23 +110,23 @@ cibuild__deploy_create_index() {
     fi
   fi
 
-  target_digest=$(regctl -v error manifest head ${target_image}:${target_tag})
+  target_digest=$(regctl -v error manifest head ${target_image}:${build_tag})
   cibuild_log_debug "target_digest 1: $target_digest"
   
   if [ "${deploy_signature:-0}" = "1" ]; then
     cibuild_log_debug "signing ${target_image}@${target_digest}"
     export COSIGN_PASSWORD="" && cosign sign --key /tmp/cosign.key "${target_image}@${target_digest}"
     cosign verify --key /tmp/cosign.pub "${target_image}@${target_digest}"
-    cosign verify --key /tmp/cosign.pub "${target_image}:${target_tag}"
+    cosign verify --key /tmp/cosign.pub "${target_image}:${build_tag}"
   fi
 }
 
-cibuild__deploy_additional_tags() {
-  local deploy_additional_tags=$(cibuild_env_get 'deploy_additional_tags')
+cibuild__deploy_image_tags() {
+  local deploy_image_tags=$(cibuild_env_get 'deploy_image_tags')
   local tag
 
   IFS=',;'
-  set -- $deploy_additional_tags
+  set -- $deploy_image_tags
   unset IFS
   
   for tag; do
@@ -261,7 +261,7 @@ cibuild_deploy_run() {
   printf '%s\n' "$deploy_cosign_public_key" | base64 -d > /tmp/cosign.pub
   
   cibuild__deploy_create_index
-  cibuild__deploy_additional_tags
+  cibuild__deploy_image_tags
   cibuild__deploy_minor_tag
 
   if ! cibuild_core_run_script deploy post; then

@@ -16,6 +16,7 @@ check_enabled=0
 check_pre_script=
 check_post_script=
 build_enabled=1
+build_tag=
 build_pre_script=
 build_post_script=
 build_client=buildctl

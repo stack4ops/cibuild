@@ -15,7 +15,7 @@ cibuild__check_base_image() {
         base_image=$(cibuild_core_base_image) \
         base_tag=$(cibuild_core_base_tag) \
         target_image=$(cibuild_ci_target_image) \
-        target_tag=$(cibuild_ci_target_tag)
+        build_tag=$(cibuild_ci_build_tag)
   
   rand=$RANDOM
   layers_base_image_cache="/tmp/base_image_layers_${rand}.json"
@@ -38,9 +38,9 @@ cibuild__check_base_image() {
   fi
   
   # --- target image ---
-  if ! regctl -v error manifest get "${target_image:?}:${target_tag:?}" --format raw-body --platform local \
+  if ! regctl -v error manifest get "${target_image:?}:${build_tag:?}" --format raw-body --platform local \
         | jq '[.layers[].digest]' >"${layers_target_image_cache}"; then
-    cibuild_log_info "cannot get last target image ${target_image}:${target_tag}. Assume this is the first build"
+    cibuild_log_info "cannot get last target image ${target_image}:${build_tag}. Assume this is the first build"
     clean_up
     return 0
   fi

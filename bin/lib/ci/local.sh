@@ -168,8 +168,8 @@ cibuild_ci_target_image_path() {
   printf '%s\n' "${CIBUILD_TARGET_IMAGE_PATH:-$(cibuild__get_project_path)}"
 }
 
-cibuild_ci_target_tag() {
-  printf '%s\n' $(cibuild_ci_process_tag "${CIBUILD_TARGET_TAG:-$(cibuild_core_base_tag)}")
+cibuild_ci_build_tag() {
+  printf '%s\n' ${CIBUILD_BUILD_TAG:-$(cibuild_ci_ref)}
 }
 
 cibuild_ci_target_image() {
@@ -177,7 +177,7 @@ cibuild_ci_target_image() {
 }
 
 cibuild_ci_target_image_full() {
-  printf '%s\n' "$(cibuild_ci_target_registry)/$(cibuild_ci_target_image_path):$(cibuild_ci_target_tag)"
+  printf '%s\n' "$(cibuild_ci_target_registry)/$(cibuild_ci_target_image_path):$(cibuild_ci_build_tag)"
 }
 
 cibuild__ci_init() {

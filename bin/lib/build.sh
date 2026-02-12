@@ -182,7 +182,7 @@ cibuild__build_get_cache_from_opt() {
 
 cibuild__build_get_import_cache_args() {
   local arch=$1 \
-        target_tag=$(cibuild_ci_target_tag) \
+        build_tag=$(cibuild_ci_build_tag) \
         build_import_cache=$(cibuild_env_get 'build_import_cache')
 
   case "$build_import_cache" in
@@ -190,10 +190,10 @@ cibuild__build_get_import_cache_args() {
       printf '%s\n' ""
       ;;
     ci_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=$(cibuild_ci_image)-${arch}-cache:${target_tag}"
+      printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=$(cibuild_ci_image)-${arch}-cache:${build_tag}"
       ;;
     target_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=$(cibuild_ci_target_image)-${arch}-cache:${target_tag}"
+      printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=$(cibuild_ci_target_image)-${arch}-cache:${build_tag}"
       ;;
     *)
       printf '%s\n' "$(cibuild__build_get_cache_from_opt) ${build_import_cache}"
@@ -203,7 +203,7 @@ cibuild__build_get_import_cache_args() {
 
 cibuild__build_get_export_cache_args() {
   local arch=$1 \
-        target_tag=$(cibuild_ci_target_tag) \
+        build_tag=$(cibuild_ci_build_tag) \
         cache_mode=$(cibuild_env_get 'build_export_cache_mode') \
         build_export_cache=$(cibuild_env_get 'build_export_cache')
 
@@ -212,10 +212,10 @@ cibuild__build_get_export_cache_args() {
       printf '%s\n' ""
       ;;
     ci_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=$(cibuild_ci_image)-${arch}-cache:${target_tag},mode=${cache_mode}"
+      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=$(cibuild_ci_image)-${arch}-cache:${build_tag},mode=${cache_mode}"
       ;;
     target_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=$(cibuild_ci_target_image)-${arch}-cache:${target_tag},mode=${cache_mode}"
+      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=$(cibuild_ci_target_image)-${arch}-cache:${build_tag},mode=${cache_mode}"
       ;;
     *)
       printf '%s\n' "$(cibuild__build_get_cache_to_opt) ${build_export_cache}"
@@ -263,7 +263,7 @@ cibuild__build_image_buildx() {
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
         target_image=$(cibuild_ci_target_image) \
-        target_tag=$(cibuild_ci_target_tag) \
+        build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
         platform_tag \
         cache \
@@ -324,7 +324,7 @@ cibuild__build_image_buildx() {
       ${build_arguments} \
       ${no_cache} \
       ${cache} \
-      --tag "${target_image}-${platform_tag}:${target_tag}" \
+      --tag "${target_image}-${platform_tag}:${build_tag}" \
       --file "${container_file}" \
       --push \
       .; then
@@ -347,7 +347,7 @@ cibuild__build_image_buildctl() {
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
         target_image=$(cibuild_ci_target_image) \
-        target_tag=$(cibuild_ci_target_tag) \
+        build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
         platform_tag \
         cache \
@@ -443,7 +443,7 @@ cibuild__build_image_buildctl() {
       ${build_args:-} \
       ${no_cache:-} \
       ${cache:-} \
-      --output type=image,name="${target_image}-${platform_tag}:${target_tag:?}",oci-artifact=true,push=true; then
+      --output type=image,name="${target_image}-${platform_tag}:${build_tag:?}",oci-artifact=true,push=true; then
       cibuild_main_err "failed: $build_command"
       
     fi
@@ -464,7 +464,7 @@ cibuild__build_image_kaniko() {
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
         target_image=$(cibuild_ci_target_image) \
-        target_tag=$(cibuild_ci_target_tag) \
+        build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
         platform_tag \
         cache_args
@@ -495,7 +495,7 @@ cibuild__build_image_kaniko() {
     if [ "${build_use_cache}" = "0" ]; then
       cache_args="--cache=false"
     else
-      cache_args="--cache=true --cache-repo=${target_image}-${target_tag}-${platform_tag}-cache"
+      cache_args="--cache=true --cache-repo=${target_image}-${build_tag}-${platform_tag}-cache"
     fi
     
     cibuild_log_debug ${cache_args}
@@ -504,7 +504,7 @@ cibuild__build_image_kaniko() {
       --context dir:///repo/ \
       --dockerfile Dockerfile \
       --snapshot-mode redo \
-      --destination "${target_image}-${platform_tag}:${target_tag}" \
+      --destination "${target_image}-${platform_tag}:${build_tag}" \
       ${cache_args} \
       --custom-platform $platform \
       --build-arg TARGETARCH="${platform##*/}" \
