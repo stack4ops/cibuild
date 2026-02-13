@@ -11,10 +11,14 @@ _CIBUILD_DEPLOY_LOADED=1
 cibuild__deploy_minortag=""
 
 cibuild__get_docker_attestation_digest() {
-  local target_image=$(cibuild_ci_target_image)
-  local image_ref="$1"
-  local ref_digest=$(regctl -v error manifest head ${image_ref})
-  local attestation=$(regctl -v error manifest get "${target_image}@${ref_digest}" \
+  local platform_image="$1"
+  local build_tag="$2"
+
+  local image="${platform_image}:${build_tag}"
+
+  local ref_digest=$(regctl -v error manifest head ${image})
+  
+  local attestation=$(regctl -v error manifest get "${image}@${ref_digest}" \
     --format '{{range .Manifests}}{{if eq (index .Annotations "vnd.docker.reference.type") "attestation-manifest"}}{{.Digest}}{{end}}{{end}}') \
     || {
       cibuild_log_err "error getting attestation digest"
@@ -55,8 +59,8 @@ cibuild__deploy_create_index() {
   local found=0
 
   for platform in $platforms; do
-    platform_tag=$(echo "$platform" | tr '/' '-')
-    ref="${target_image}-${platform_tag}:${build_tag}"
+    platform_name=$(echo "$platform" | tr '/' '-')
+    ref="${target_image}-${platform_name}:${build_tag}"
 
     if regctl -v error manifest head "$ref" >/dev/null 2>&1; then
       create_args="$create_args --ref $ref --platform $platform"
@@ -93,16 +97,17 @@ cibuild__deploy_create_index() {
       *" $value "*) platform="$value" ;;
       *) platform="$first" ;;
     esac
-    platform_tag=$(echo "${platform}" | tr '/' '-')
+    platform_name=$(echo "${platform}" | tr '/' '-')
     
     #ref_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform unknown/unknown)
-    ref_digest=$(cibuild__get_docker_attestation_digest "${target_image}-${platform_tag}:${build_tag}")
+    cibuild_log_debug "${target_image}-${platform_name}:${build_tag}"
+    ref_digest=$(cibuild__get_docker_attestation_digest "${target_image}-${platform_name}" "${build_tag}")
     
     cibuild_log_debug "ref_digest: $ref_digest"
-    image_digest=$(regctl -v error manifest head ${target_image}-${platform_tag}:${build_tag} --platform ${platform})
+    image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag} --platform ${platform})
 
     if ! regctl -v error index add "${target_image}:${build_tag}" \
-      --ref ${target_image}@${ref_digest} \
+      --ref ${target_image}-${platform_name}@${ref_digest} \
       --desc-platform unknown/unknown \
       --desc-annotation vnd.docker.reference.type=attestation-manifest \
       --desc-annotation vnd.docker.reference.digest=${image_digest}; then
@@ -111,14 +116,64 @@ cibuild__deploy_create_index() {
   fi
 
   target_digest=$(regctl -v error manifest head ${target_image}:${build_tag})
-  cibuild_log_debug "target_digest 1: $target_digest"
+  cibuild_log_debug "target_digest: $target_digest"
   
   if [ "${deploy_signature:-0}" = "1" ]; then
     cibuild_log_debug "signing ${target_image}@${target_digest}"
-    export COSIGN_PASSWORD="" && cosign sign --key /tmp/cosign.key "${target_image}@${target_digest}"
-    cosign verify --key /tmp/cosign.pub "${target_image}@${target_digest}"
-    cosign verify --key /tmp/cosign.pub "${target_image}:${build_tag}"
+
+    export COSIGN_PASSWORD=""
+
+    local max_sign_retries=3
+    local sign_try=1
+    local sign_success=0
+
+    while [ $sign_try -le $max_sign_retries ]; do
+      if cosign sign --key /tmp/cosign.key "${target_image}@${target_digest}"; then
+        sign_success=1
+        break
+      fi
+
+      cibuild_log_debug "cosign sign failed (attempt ${sign_try}/${max_sign_retries})"
+      sign_try=$((sign_try+1))
+      sleep 3
+    done
+
+    if [ "$sign_success" -ne 1 ]; then
+      cibuild_log_err "ERROR: cosign signing failed after ${max_sign_retries} attempts"
+    fi
+
+    local max_verify_wait=30
+    local verify_interval=3
+    local waited=0
+
+    while true; do
+      if cosign verify --key /tmp/cosign.pub "${target_image}@${target_digest}" >/dev/null 2>&1; then
+        break
+      fi
+
+      if [ $waited -ge $max_verify_wait ]; then
+        cibuild_log_err "ERROR: Signature not available after ${max_verify_wait}s"
+        exit 1
+      fi
+
+      sleep $verify_interval
+      waited=$((waited+verify_interval))
+    done
+
+    if ! cosign verify --key /tmp/cosign.pub "${target_image}:${build_tag}"; then
+      cibuild_log_err "ERROR: Tag verification failed"
+      exit 1
+    fi
   fi
+
+
+  # if [ "${deploy_signature:-0}" = "1" ]; then
+  #   cibuild_log_debug "signing ${target_image}@${target_digest}"
+  #   export COSIGN_PASSWORD="" && cosign sign --key /tmp/cosign.key "${target_image}@${target_digest}"
+  #   sleep 10
+  #   cosign verify --key /tmp/cosign.pub "${target_image}@${target_digest}"
+  #   cosign verify --key /tmp/cosign.pub "${target_image}:${build_tag}"
+  # fi
 }
 
 cibuild__deploy_image_tags() {

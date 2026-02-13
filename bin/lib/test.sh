@@ -374,10 +374,10 @@ assert_response() {
   local test_backend=$(cibuild_env_get 'test_backend') \
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
-        platform_tag=$(cibuild_core_get_platform_tag)
+        platform_name=$(cibuild_core_get_platform_name)
         
   _test_id=$((1000 + RANDOM % 9999))
-  _test_image="${target_image}-${platform_tag}:${build_tag}"
+  _test_image="${target_image}-${platform_name}:${build_tag}"
   _container="testrun-${_test_id}"
   _pod="testrun-${_test_id}"
 
@@ -414,10 +414,10 @@ assert_log() {
   local test_backend=$(cibuild_env_get 'test_backend') \
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
-        platform_tag=$(cibuild_core_get_platform_tag)
+        platform_name=$(cibuild_core_get_platform_name)
 
   _test_id=$((1000 + RANDOM % 9999))
-  _test_image="${target_image}-${platform_tag}:${build_tag}"
+  _test_image="${target_image}-${platform_name}:${build_tag}"
   _container="testrun-${_test_id}"
   _pod="testrun-${_test_id}"
 

@@ -318,24 +318,24 @@ cibuild_core_base_image_full() { printf '%s\n' "${_CIBUILD_CORE_BASE_REGISTRY}/$
 #   printf '%s\n' "$tag"
 # }
 
-cibuild_core_get_platform_tag() {
-  local arch platform_tag
+cibuild_core_get_platform_name() {
+  local arch platform_name
   arch=$(uname -m)
-  platform_tag="linux-amd64"
+  platform_name="linux-amd64"
 
   case "$arch" in
       x86_64)
-          platform_tag="linux-amd64"
+          platform_name="linux-amd64"
           ;;
       aarch64 | arm64)
-          platform_tag="linux-arm64"
+          platform_name="linux-arm64"
           ;;
       *)
           log 0 "unknown architecture: $arch"
           exit 1
           ;;
   esac
-  printf '%s\n' "$platform_tag"
+  printf '%s\n' "$platform_name"
 }
 
 cibuild_core_get_platform_arch() {

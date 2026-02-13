@@ -265,7 +265,7 @@ cibuild__build_image_buildx() {
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
-        platform_tag \
+        platform_name \
         cache \
         sbom_args \
         provenance_args \
@@ -284,10 +284,10 @@ cibuild__build_image_buildx() {
   fi
 
   for platform in ${platforms}; do
-    platform_tag=$(echo "${platform}" | tr '/' '-')
-    cibuild_log_debug "platform_tag: $platform_tag"
+    platform_name=$(echo "${platform}" | tr '/' '-')
+    cibuild_log_debug "platform_name: $platform_name"
 
-    cache="$(cibuild__build_get_import_cache_args ${platform_tag}) $(cibuild__build_get_export_cache_args ${platform_tag})"
+    cache="$(cibuild__build_get_import_cache_args ${platform_name}) $(cibuild__build_get_export_cache_args ${platform_name})"
     cibuild_log_debug "cache: $cache"
     
     sbom_args="$(cibuild__build_get_sbom_args)"
@@ -324,7 +324,7 @@ cibuild__build_image_buildx() {
       ${build_arguments} \
       ${no_cache} \
       ${cache} \
-      --tag "${target_image}-${platform_tag}:${build_tag}" \
+      --tag "${target_image}-${platform_name}:${build_tag}" \
       --file "${container_file}" \
       --push \
       .; then
@@ -349,7 +349,7 @@ cibuild__build_image_buildctl() {
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
-        platform_tag \
+        platform_name \
         cache \
         sbom_args \
         provenance_args \
@@ -399,10 +399,10 @@ cibuild__build_image_buildctl() {
   fi
 
   for platform in ${platforms}; do
-    platform_tag=$(echo "${platform}" | tr '/' '-')
-    cibuild_log_debug "platform_tag: $platform_tag"
+    platform_name=$(echo "${platform}" | tr '/' '-')
+    cibuild_log_debug "platform_name: $platform_name"
 
-    cache="$(cibuild__build_get_import_cache_args ${platform_tag}) $(cibuild__build_get_export_cache_args ${platform_tag})"
+    cache="$(cibuild__build_get_import_cache_args ${platform_name}) $(cibuild__build_get_export_cache_args ${platform_name})"
     cibuild_log_debug "cache: $cache"
     
     sbom_args="$(cibuild__build_get_sbom_args)"
@@ -443,7 +443,7 @@ cibuild__build_image_buildctl() {
       ${build_args:-} \
       ${no_cache:-} \
       ${cache:-} \
-      --output type=image,name="${target_image}-${platform_tag}:${build_tag:?}",oci-artifact=true,push=true; then
+      --output type=image,name="${target_image}-${platform_name}:${build_tag:?}",oci-artifact=true,push=true; then
       cibuild_main_err "failed: $build_command"
       
     fi
@@ -466,7 +466,7 @@ cibuild__build_image_kaniko() {
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
-        platform_tag \
+        platform_name \
         cache_args
   
   cibuild_log_info "build image with kaniko"
@@ -478,8 +478,8 @@ cibuild__build_image_kaniko() {
   fi
 
   for platform in ${platforms}; do
-    platform_tag=$(echo "${platform}" | tr '/' '-')
-    cibuild_log_debug "platform_tag: $platform_tag"
+    platform_name=$(echo "${platform}" | tr '/' '-')
+    cibuild_log_debug "platform_name: $platform_name"
     
     cibuild_log_debug "build_args: $build_args"
 
@@ -495,7 +495,7 @@ cibuild__build_image_kaniko() {
     if [ "${build_use_cache}" = "0" ]; then
       cache_args="--cache=false"
     else
-      cache_args="--cache=true --cache-repo=${target_image}-${build_tag}-${platform_tag}-cache"
+      cache_args="--cache=true --cache-repo=${target_image}-${build_tag}-${platform_name}-cache"
     fi
     
     cibuild_log_debug ${cache_args}
@@ -504,7 +504,7 @@ cibuild__build_image_kaniko() {
       --context dir:///repo/ \
       --dockerfile Dockerfile \
       --snapshot-mode redo \
-      --destination "${target_image}-${platform_tag}:${build_tag}" \
+      --destination "${target_image}-${platform_name}:${build_tag}" \
       ${cache_args} \
       --custom-platform $platform \
       --build-arg TARGETARCH="${platform##*/}" \
