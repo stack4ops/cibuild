@@ -9,6 +9,7 @@
 _CIBUILD_RELEASE_LOADED=1
 
 cibuild__release_minortag=""
+cibuild__target_digest=""
 
 cibuild__get_docker_attestation_digest() {
   local platform_image="$1"
@@ -32,9 +33,13 @@ cibuild__release_copy_tag() {
   local copy_to_tag="$1" \
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag)
-        
-  if ! regctl -v error image copy ${target_image}:${build_tag} ${target_image}:${copy_to_tag} >/dev/null 2>&1; then
-      cibuild_log_err "failed to copy ${target_image}:${build_tag} to ${target_image}:${copy_to_tag}"
+  
+  if [ -z "${cibuild__target_digest:-}" ]; then
+    cibuild_main_err "internal global cibuild__target_digest missing"
+  fi
+
+  if ! regctl -v error image copy ${target_image}@${cibuild__target_digest} ${target_image}:${copy_to_tag} >/dev/null 2>&1; then
+      cibuild_log_err "failed to set tag ${target_image}:${copy_to_tag} for ${target_image}@${cibuild__target_digest}"
       return 1
   fi
   return 0
@@ -49,7 +54,7 @@ cibuild__release_create_index() {
         release_docker_attestation_autodetect=$(cibuild_env_get 'release_docker_attestation_autodetect') \
         release_docker_attestation_manifest=$(cibuild_env_get 'release_docker_attestation_manifest') \
         target_registry=$(cibuild_ci_target_registry) \
-        ref_digest \
+        attestation_digest \
         image_digest \
         release_signature=$(cibuild_env_get 'release_signature')
 
@@ -74,12 +79,14 @@ cibuild__release_create_index() {
     cibuild_main_err "no platform images found, cannot create index ${target_image}:${build_tag}"
   fi
 
-  if ! regctl -v error index create "$target_image:$build_tag" $create_args; then
-    cibuild_main_err "error creating image index ${target_image}:${build_tag}"
+  # create new tmp index
+  tmp_tag="${build_tag}-tmp-$(date +%s)"
+  if ! regctl -v error index create "$target_image:$tmp_tag" $create_args; then
+    cibuild_main_err "error creating image index ${target_image}:${tmp_tag}"
   fi
   
-  cibuild_log_debug "image index created: ${target_image}:${build_tag} for $platforms"
-
+  cibuild_log_debug "temporary image index created: ${target_image}:${tmp_tag} for $platforms"
+  
   if [ "${release_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
     cibuild_log_debug "docker.io detected as target_registry set release_docker_attestation_manifest=1"
     release_docker_attestation_manifest=1
@@ -99,27 +106,32 @@ cibuild__release_create_index() {
     esac
     platform_name=$(echo "${platform}" | tr '/' '-')
     
-    #ref_digest=$(regctl -v error manifest head ${target_image}:${image_tag} --platform unknown/unknown)
     cibuild_log_debug "${target_image}-${platform_name}:${build_tag}"
-    ref_digest=$(cibuild__get_docker_attestation_digest "${target_image}-${platform_name}" "${build_tag}")
     
-    cibuild_log_debug "ref_digest: $ref_digest"
+    attestation_digest=$(cibuild__get_docker_attestation_digest "${target_image}-${platform_name}" "${build_tag}")
+    cibuild_log_debug "attestation: $attestation_digest"
+    
     image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag} --platform ${platform})
 
-    if ! regctl -v error index add "${target_image}:${build_tag}" \
-      --ref ${target_image}-${platform_name}@${ref_digest} \
+    if ! regctl -v error index add "${target_image}:${tmp_tag}" \
+      --ref ${target_image}-${platform_name}@${attestation_digest} \
       --desc-platform unknown/unknown \
       --desc-annotation vnd.docker.reference.type=attestation-manifest \
       --desc-annotation vnd.docker.reference.digest=${image_digest}; then
       cibuild_main_err "error adding docker attestation manifest"
     fi
   fi
-
-  target_digest=$(regctl -v error manifest head ${target_image}:${build_tag})
-  cibuild_log_debug "target_digest: $target_digest"
   
+  # save this to internal variable, don't use build_tag anymore it is just a pointer to the final digest
+  cibuild__target_digest=$(regctl -v error manifest head "${target_image}:${tmp_tag}")
+  cibuild_log_debug "new index digest: $cibuild__target_digest"
+
+  if ! regctl -v error tag delete "${target_image}:${tmp_tag}"; then
+    cibuild_log_err "error deleting ${target_image}:${tmp_tag}"
+  fi
+
   if [ "${release_signature:-0}" = "1" ]; then
-    cibuild_log_debug "signing ${target_image}@${target_digest}"
+    cibuild_log_debug "signing ${target_image}@${cibuild__target_digest}"
 
     export COSIGN_PASSWORD=""
 
@@ -128,7 +140,7 @@ cibuild__release_create_index() {
     local sign_success=0
 
     while [ $sign_try -le $max_sign_retries ]; do
-      if cosign sign --key /tmp/cosign.key "${target_image}@${target_digest}"; then
+      if cosign sign --key /tmp/cosign.key "${target_image}@${cibuild__target_digest}"; then
         sign_success=1
         break
       fi
@@ -147,7 +159,8 @@ cibuild__release_create_index() {
     local waited=0
 
     while true; do
-      if cosign verify --key /tmp/cosign.pub "${target_image}@${target_digest}" >/dev/null 2>&1; then
+      if cosign verify --key /tmp/cosign.pub "${target_image}@${cibuild__target_digest}" >/dev/null 2>&1; then
+        cibuild_log_info "verified after $waited sec"
         break
       fi
 
@@ -159,24 +172,17 @@ cibuild__release_create_index() {
       sleep $verify_interval
       waited=$((waited+verify_interval))
     done
-
-    if ! cosign verify --key /tmp/cosign.pub "${target_image}:${build_tag}"; then
-      cibuild_log_err "ERROR: Tag verification failed"
-      exit 1
-    fi
   fi
 
+  # set build_tag
+  if ! regctl -v error image copy ${target_image}@${cibuild__target_digest} ${target_image}:${build_tag} >/dev/null 2>&1; then
+    cibuild_log_err "failed to set ${target_image}:${build_tag} to ${target_image}@${cibuild__target_digest}"
+  fi
 
-  # if [ "${release_signature:-0}" = "1" ]; then
-  #   cibuild_log_debug "signing ${target_image}@${target_digest}"
-  #   export COSIGN_PASSWORD="" && cosign sign --key /tmp/cosign.key "${target_image}@${target_digest}"
-  #   sleep 10
-  #   cosign verify --key /tmp/cosign.pub "${target_image}@${target_digest}"
-  #   cosign verify --key /tmp/cosign.pub "${target_image}:${build_tag}"
-  # fi
 }
 
 cibuild__release_image_tags() {
+  local build_tag=$(cibuild_ci_build_tag)
   local release_image_tags=$(cibuild_env_get 'release_image_tags')
   local tag
 
