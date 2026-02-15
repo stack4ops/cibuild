@@ -80,7 +80,9 @@ cibuild__release_create_index() {
   fi
 
   # create new tmp index
-  tmp_tag="${build_tag}-tmp-$(date +%s)"
+  #cibuild__target_digest=$(regctl -v error index create "$target_image" $create_args)
+
+  tmp_tag="${build_tag}_tmp"
   if ! regctl -v error index create "$target_image:$tmp_tag" $create_args; then
     cibuild_main_err "error creating image index ${target_image}:${tmp_tag}"
   fi
@@ -126,9 +128,9 @@ cibuild__release_create_index() {
   cibuild__target_digest=$(regctl -v error manifest head "${target_image}:${tmp_tag}")
   cibuild_log_debug "new index digest: $cibuild__target_digest"
 
-  if ! regctl -v error tag delete "${target_image}:${tmp_tag}"; then
-    cibuild_log_err "error deleting ${target_image}:${tmp_tag}"
-  fi
+  # if ! regctl -v error tag delete "${target_image}:${tmp_tag}"; then
+  #   cibuild_log_err "error deleting ${target_image}:${tmp_tag}"
+  # fi
 
   if [ "${release_signature:-0}" = "1" ]; then
     cibuild_log_debug "signing ${target_image}@${cibuild__target_digest}"
