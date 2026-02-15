@@ -25,7 +25,7 @@ cibuild__build_detect_kubernetes() {
   echo "$build_buildkit_service_account" | base64 -d > /tmp/kubeconfig
   export KUBECONFIG=/tmp/kubeconfig
 
-  if ! timeout 5 kubectl auth can-i create deploy -q >/dev/null 2>&1; then
+  if ! timeout 5 kubectl auth can-i create release -q >/dev/null 2>&1; then
     return 1
   else
     return 0
@@ -389,7 +389,7 @@ cibuild__build_image_buildctl() {
   fi
   
   # build oci image for each arch (Unfortunately docker references attestations in a (forced) image-index for each image)
-  # in deploy run a clean oci multiarch image index is created for final tagging 
+  # in release run a clean oci multiarch image index is created for final tagging 
   # and an optional docker attestation manifest for ui
   
   if [ "${build_native}" = "1" ]; then

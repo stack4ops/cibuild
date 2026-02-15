@@ -9,7 +9,7 @@
 . "$CIBUILD_LIB_PATH/check.sh"
 . "$CIBUILD_LIB_PATH/build.sh"
 . "$CIBUILD_LIB_PATH/test.sh"
-. "$CIBUILD_LIB_PATH/deploy.sh"
+. "$CIBUILD_LIB_PATH/release.sh"
 
 cibuild_main_err() { 
   cibuild_log_err "$1"
@@ -33,7 +33,7 @@ usage() {
   echo "Args:"
   echo "  -h, --help       Show this help"
   echo "  -v, --version    Show version"
-  echo "  -r, --run        Run command: check|build|test|deploy|all"
+  echo "  -r, --run        Run command: check|build|test|release|all"
   echo ""
 }
 
@@ -76,9 +76,9 @@ case "$CIBUILD_RUN_CMD" in
     cibuild_log_info "Running test..."
     cibuild_test_run
     ;;
-  deploy)
-    cibuild_log_info "Running deploy..."
-    cibuild_deploy_run
+  release)
+    cibuild_log_info "Running release..."
+    cibuild_release_run
     ;;
   all)
     cibuild_log_info "All runs..."
@@ -88,8 +88,8 @@ case "$CIBUILD_RUN_CMD" in
     cibuild_build_run
     cibuild_log_info "Running test..."
     cibuild_test_run
-    cibuild_log_info "Running deploy..."
-    cibuild_deploy_run
+    cibuild_log_info "Running release..."
+    cibuild_release_run
     ;;
   *)
     cibuild_log_info "Unknown run command: $CIBUILD_RUN_CMD"

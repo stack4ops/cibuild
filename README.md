@@ -42,7 +42,7 @@ workflow:
 
 One of the primary use cases is the scheduled rebuilding and retagging of a custom image whenever a newer base image becomes available for a major tag such as latest.
 
-The built-in check stage parses the FROM line of the Dockerfile. If a new base image is detected, the check stage retrieves the unique sha256 digest behind the updated major tag and triggers the build pipeline. When a regular expression is defined in the minor_tag_regex variable of cibuild.cfg, the system also looks for a corresponding minor tag. If found, this minor tag is stored as a cache entry and used as an additional image tag during the deploy stage.
+The built-in check stage parses the FROM line of the Dockerfile. If a new base image is detected, the check stage retrieves the unique sha256 digest behind the updated major tag and triggers the build pipeline. When a regular expression is defined in the minor_tag_regex variable of cibuild.cfg, the system also looks for a corresponding minor tag. If found, this minor tag is stored as a cache entry and used as an additional image tag during the release stage.
 
 As a result, your images automatically inherit a tagging scheme that mirrors that of the upstream base images. When the cursor (i.e., the moving pointer of the upstream tag) advances, the cursor of your own image advances as well.
 
@@ -70,7 +70,7 @@ The flow of embedded check:
                  |                   ▼
                  |              Cancel Pipeline
                  ▼
-     minor_tag_regex configured?
+             (re)-build
                  │
            ┌─────┴──────┐
            │            │

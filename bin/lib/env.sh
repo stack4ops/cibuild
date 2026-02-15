@@ -50,14 +50,14 @@ test_backend=docker
 test_service_account=
 test_run_timeout=60
 test_log_timeout=5
-deploy_enabled=1
-deploy_pre_script=
-deploy_post_script=
-deploy_docker_attestation_autodetect=1
-deploy_docker_attestation_manifest=0
-deploy_minor_tag_paging_limit=10000
-deploy_minor_tag_regex=
-deploy_signature=0
+release_enabled=1
+release_pre_script=
+release_post_script=
+release_docker_attestation_autodetect=1
+release_docker_attestation_manifest=0
+release_minor_tag_paging_limit=10000
+release_minor_tag_regex=
+release_signature=0
 '
 
 _CIBUILD_ENV_VARS=""

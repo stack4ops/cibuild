@@ -1,14 +1,14 @@
 #!/bin/sh
-# Package cibuild/deploy
+# Package cibuild/release
 
-# All deployable artifacts and their attestations are signed 
+# All releaseable artifacts and their attestations are signed 
 # by the same cryptographic identity to ensure a single, auditable trust root.
 
 # ---- Guard (like init once) ----
-[ -n "${_CIBUILD_DEPLOY_LOADED-}" ] && return
-_CIBUILD_DEPLOY_LOADED=1
+[ -n "${_CIBUILD_RELEASE_LOADED-}" ] && return
+_CIBUILD_RELEASE_LOADED=1
 
-cibuild__deploy_minortag=""
+cibuild__release_minortag=""
 
 cibuild__get_docker_attestation_digest() {
   local platform_image="$1"
@@ -28,7 +28,7 @@ cibuild__get_docker_attestation_digest() {
   printf '%s\n' "$attestation"
 }
 
-cibuild__deploy_copy_tag() {
+cibuild__release_copy_tag() {
   local copy_to_tag="$1" \
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag)
@@ -40,18 +40,18 @@ cibuild__deploy_copy_tag() {
   return 0
 }
 
-cibuild__deploy_create_index() {
+cibuild__release_create_index() {
   
   local target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         platforms \
         build_platforms=$(cibuild_env_get 'build_platforms') \
-        deploy_docker_attestation_autodetect=$(cibuild_env_get 'deploy_docker_attestation_autodetect') \
-        deploy_docker_attestation_manifest=$(cibuild_env_get 'deploy_docker_attestation_manifest') \
+        release_docker_attestation_autodetect=$(cibuild_env_get 'release_docker_attestation_autodetect') \
+        release_docker_attestation_manifest=$(cibuild_env_get 'release_docker_attestation_manifest') \
         target_registry=$(cibuild_ci_target_registry) \
         ref_digest \
         image_digest \
-        deploy_signature=$(cibuild_env_get 'deploy_signature')
+        release_signature=$(cibuild_env_get 'release_signature')
 
   platforms=$(echo "$build_platforms" | tr ',' ' ')
 
@@ -80,12 +80,12 @@ cibuild__deploy_create_index() {
   
   cibuild_log_debug "image index created: ${target_image}:${build_tag} for $platforms"
 
-  if [ "${deploy_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
-    cibuild_log_debug "docker.io detected as target_registry set deploy_docker_attestation_manifest=1"
-    deploy_docker_attestation_manifest=1
+  if [ "${release_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
+    cibuild_log_debug "docker.io detected as target_registry set release_docker_attestation_manifest=1"
+    release_docker_attestation_manifest=1
   fi
 
-  if [ "${deploy_docker_attestation_manifest}" = "1" ]; then
+  if [ "${release_docker_attestation_manifest}" = "1" ]; then
     cibuild_log_debug "add docker attestation manifest"
     # only one platform is required for referencing
     # if linux/amd64 is not found first platform im array is used
@@ -118,7 +118,7 @@ cibuild__deploy_create_index() {
   target_digest=$(regctl -v error manifest head ${target_image}:${build_tag})
   cibuild_log_debug "target_digest: $target_digest"
   
-  if [ "${deploy_signature:-0}" = "1" ]; then
+  if [ "${release_signature:-0}" = "1" ]; then
     cibuild_log_debug "signing ${target_image}@${target_digest}"
 
     export COSIGN_PASSWORD=""
@@ -167,7 +167,7 @@ cibuild__deploy_create_index() {
   fi
 
 
-  # if [ "${deploy_signature:-0}" = "1" ]; then
+  # if [ "${release_signature:-0}" = "1" ]; then
   #   cibuild_log_debug "signing ${target_image}@${target_digest}"
   #   export COSIGN_PASSWORD="" && cosign sign --key /tmp/cosign.key "${target_image}@${target_digest}"
   #   sleep 10
@@ -176,24 +176,24 @@ cibuild__deploy_create_index() {
   # fi
 }
 
-cibuild__deploy_image_tags() {
-  local deploy_image_tags=$(cibuild_env_get 'deploy_image_tags')
+cibuild__release_image_tags() {
+  local release_image_tags=$(cibuild_env_get 'release_image_tags')
   local tag
 
   IFS=',;'
-  set -- $deploy_image_tags
+  set -- $release_image_tags
   unset IFS
   
   for tag; do
     case "$tag" in
       *__MINORTAG__*)
-      cibuild__deploy_minortag="$tag"
+      cibuild__release_minortag="$tag"
       continue
       ;;
       *)
       local processed_tag=$(cibuild_ci_process_tag "$tag")
       cibuild_log_debug "adding addtional tag $processed_tag"
-      if ! cibuild__deploy_copy_tag "$processed_tag"; then
+      if ! cibuild__release_copy_tag "$processed_tag"; then
         cibuild_log_err "error assigning additional tag $processed_tag"
         continue
       fi
@@ -203,9 +203,9 @@ cibuild__deploy_image_tags() {
 
 }
 
-cibuild__deploy_minor_tag() {
+cibuild__release_minor_tag() {
 
-  local deploy_minor_tag_regex=$(cibuild_env_get 'deploy_minor_tag_regex') \
+  local release_minor_tag_regex=$(cibuild_env_get 'release_minor_tag_regex') \
         base_image=$(cibuild_core_base_image) \
         base_tag=$(cibuild_core_base_tag) \
         ref \
@@ -215,12 +215,12 @@ cibuild__deploy_minor_tag() {
     printf '%s' "$1" | sed 's/[&\/]/\\&/g'
   }
 
-  if [ -z "${cibuild__deploy_minortag:-}" ]; then
+  if [ -z "${cibuild__release_minortag:-}" ]; then
     cibuild_log_debug "no additional __MINORTAG__ defined. skipping get_minor_tag"
     return 0
   fi
 
-  if [ -z "${deploy_minor_tag_regex:-}" ]; then
+  if [ -z "${release_minor_tag_regex:-}" ]; then
     cibuild_log_debug "no minor tag regex defined. skipping get_minor_tag"
     return 0
   fi
@@ -234,10 +234,10 @@ cibuild__deploy_minor_tag() {
   fi
 
   cibuild_log_debug "current_digest: $current_digest"
-  cibuild_log_debug "minor_tag_regex: ${deploy_minor_tag_regex}"
+  cibuild_log_debug "minor_tag_regex: ${release_minor_tag_regex}"
 
   # get tags, filter, reverse sorting
-  local limit=$(cibuild_env_get 'deploy_minor_tag_paging_limit') \
+  local limit=$(cibuild_env_get 'release_minor_tag_paging_limit') \
         last="" \
         seen_last="" \
         all_tags=""
@@ -259,7 +259,7 @@ cibuild__deploy_minor_tag() {
     seen_last="$last"
   done 
   
-  tags="$(printf "%b\n" "$all_tags" | sort -V -r | grep -E "$deploy_minor_tag_regex")"
+  tags="$(printf "%b\n" "$all_tags" | sort -V -r | grep -E "$release_minor_tag_regex")"
   
   local mnt
   for mt in $tags; do
@@ -272,10 +272,10 @@ cibuild__deploy_minor_tag() {
 
     if [ "$tag_digest" = "$current_digest" ]; then
       cibuild_log_debug "found matching tag for $base_tag = $mt with same digest $current_digest"
-      local processed_mt=$(cibuild_ci_process_tag $cibuild__deploy_minortag)
+      local processed_mt=$(cibuild_ci_process_tag $cibuild__release_minortag)
       processed_mt=$(printf '%s' "$processed_mt" | sed -e "s/__MINORTAG__/$(sed_escape "$mt")/g")
       cibuild_log_debug "adding minor tag $processed_mt"
-      if ! cibuild__deploy_copy_tag "$processed_mt"; then
+      if ! cibuild__release_copy_tag "$processed_mt"; then
         return 1
       else
         return 0
@@ -287,39 +287,39 @@ cibuild__deploy_minor_tag() {
   return 1
 }
 
-cibuild_deploy_run() {
-  local deploy_enabled=$(cibuild_env_get 'deploy_enabled') \
-        deploy_signature=$(cibuild_env_get 'deploy_signature') \
-        deploy_cosign_private_key=$(cibuild_env_get 'deploy_cosign_private_key') \
-        deploy_cosign_public_key=$(cibuild_env_get 'deploy_cosign_public_key')
+cibuild_release_run() {
+  local release_enabled=$(cibuild_env_get 'release_enabled') \
+        release_signature=$(cibuild_env_get 'release_signature') \
+        release_cosign_private_key=$(cibuild_env_get 'release_cosign_private_key') \
+        release_cosign_public_key=$(cibuild_env_get 'release_cosign_public_key')
 
-  if [ "${deploy_enabled:?}" != "1" ]; then
-    cibuild_log_info "deploy run not enabled: deploy run skipped"
+  if [ "${release_enabled:?}" != "1" ]; then
+    cibuild_log_info "release run not enabled: release run skipped"
     return
   fi
 
-  if ! cibuild_core_run_script deploy pre; then
+  if ! cibuild_core_run_script release pre; then
     exit 1
   fi
 
-  if [ "${deploy_signature:-0}" = "1" ] && [ -z "${deploy_cosign_private_key:-}" ]; then
-    cibuild_main_err "CIBUILD_DEPLOY_COSIGN_PRIVATE_KEY env var must not be empty"
+  if [ "${release_signature:-0}" = "1" ] && [ -z "${release_cosign_private_key:-}" ]; then
+    cibuild_main_err "CIBUILD_RELEASE_COSIGN_PRIVATE_KEY env var must not be empty"
     exit 1
   fi
 
-  if [ "${deploy_signature:-0}" = "1" ] && [ -z "${deploy_cosign_public_key:-}" ]; then
-    cibuild_main_err "CIBUILD_DEPLOY_COSIGN_PUBLIC_KEY env var must not be empty"
+  if [ "${release_signature:-0}" = "1" ] && [ -z "${release_cosign_public_key:-}" ]; then
+    cibuild_main_err "CIBUILD_RELEASE_COSIGN_PUBLIC_KEY env var must not be empty"
     exit 1
   fi
 
-  printf '%s\n' "$deploy_cosign_private_key" | base64 -d > /tmp/cosign.key
-  printf '%s\n' "$deploy_cosign_public_key" | base64 -d > /tmp/cosign.pub
+  printf '%s\n' "$release_cosign_private_key" | base64 -d > /tmp/cosign.key
+  printf '%s\n' "$release_cosign_public_key" | base64 -d > /tmp/cosign.pub
   
-  cibuild__deploy_create_index
-  cibuild__deploy_image_tags
-  cibuild__deploy_minor_tag
+  cibuild__release_create_index
+  cibuild__release_image_tags
+  cibuild__release_minor_tag
 
-  if ! cibuild_core_run_script deploy post; then
+  if ! cibuild_core_run_script release post; then
     exit 1
   fi
 }

@@ -19,7 +19,7 @@ usage() {
   echo "Args:"
   echo "  -h, --help       Show this help"
   echo "  -v, --version    Show version"
-  echo "  -r, --run        Run command: check|build|test|deploy|all"
+  echo "  -r, --run        Run command: check|build|test|release|all"
   echo ""
 }
 

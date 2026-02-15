@@ -45,11 +45,11 @@ exec_cmd() {
 }
 
 case "$CIBUILD_RUN_CMD" in
-  check)  exec_cmd ;;
-  build)  exec_cmd ;;
-  test)   exec_cmd ;;
-  deploy) exec_cmd ;;
-  all)    exec_cmd ;;
+  check)    exec_cmd ;;
+  build)    exec_cmd ;;
+  test)     exec_cmd ;;
+  release)  exec_cmd ;;
+  all)      exec_cmd ;;
   *)
     echo "unsupported CIBUILD_RUN_CMD: $CIBUILD_RUN_CMD"
     exit 1
