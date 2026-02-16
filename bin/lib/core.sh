@@ -293,31 +293,6 @@ cibuild_core_base_tag() { printf '%s\n' "$_CIBUILD_CORE_BASE_TAG"; }
 cibuild_core_base_image() { printf '%s\n' "${_CIBUILD_CORE_BASE_REGISTRY}/${_CIBUILD_CORE_BASE_IMAGE_PATH}"; }
 cibuild_core_base_image_full() { printf '%s\n' "${_CIBUILD_CORE_BASE_REGISTRY}/${_CIBUILD_CORE_BASE_IMAGE_PATH}:${_CIBUILD_CORE_BASE_TAG}"; }
 
-#public functions
-
-# cibuild_process_suffix_prefix_tag() {
-#   local tag="$1"
-#   local add_branch_name_to_tags=$(cibuild_env_get 'add_branch_name_to_tags') \
-#         add_commit_sha_to_tags=$(cibuild_env_get 'add_commit_sha_to_tags') \
-#         commit=$(cibuild_ci_commit) \
-#         ref=$(cibuild_ci_ref)
-
-#   if [ "${add_branch_name_to_tags:-}" = "prefix" ]; then
-#     tag="${ref}-${tag}"
-#   fi
-#   if [ "${add_branch_name_to_tags:-}" = "suffix" ]; then
-#     tag="${tag}-${ref}"
-#   fi
-
-#   if [ "${add_commit_sha_to_tags:-}" = "prefix" ]; then
-#     tag="${commit}-${tag}"
-#   fi
-#   if [ "${add_commit_sha_to_tags:-}" = "suffix" ]; then
-#     tag="${tag}-${commit}"
-#   fi
-#   printf '%s\n' "$tag"
-# }
-
 cibuild_core_get_platform_name() {
   local arch platform_name
   arch=$(uname -m)

@@ -9,8 +9,6 @@ _CIBUILD_ENV_LOADED=1
 _CIBUILD_DEFAULTS='
 version=0.8.0
 pipeline_env=
-add_branch_name_to_tags=
-add_commit_sha_to_tags=
 docker_host=tcp://docker:2375
 check_enabled=0
 check_pre_script=
@@ -56,6 +54,7 @@ release_post_script=
 release_docker_attestation_autodetect=1
 release_docker_attestation_manifest=0
 release_minor_tag_paging_limit=10000
+release_image_tags=
 release_minor_tag_regex=
 release_signature=0
 '
