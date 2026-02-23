@@ -19,10 +19,15 @@ cibuild__test_run_docker() {
   local entrypoint="$1" \
         cmd \
         cid \
-        test_run_timeout=$(cibuild_env_get 'test_run_timeout')
+        test_run_timeout=$(cibuild_env_get 'test_run_timeout') \
+        target_registry=$(cibuild_ci_target_registry)
 
   #shift entrypoint
   shift
+  
+  if ! docker login $cibuild_ci_target_registry; then
+    cibuild_log_debug "could not login into $target_registry"
+  fi
 
   if [ -n "${_target_port}" ]; then
     cibuild_log_debug "set publish port"
