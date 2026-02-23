@@ -467,7 +467,7 @@ cibuild__test_image() {
 
     assert)
       cibuild_log_debug "assert"
-      tmpfile=$(mktemp -d /tmp/cibuild_asserts.XXXXXX)
+      tmpfile=$(mktemp /tmp/cibuild_asserts.XXXXXX)
       #tmpfile="/tmp/cibuild_asserts.$$"
       jq -c '
       .[] |
