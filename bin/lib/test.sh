@@ -24,10 +24,6 @@ cibuild__test_run_docker() {
 
   #shift entrypoint
   shift
-  
-  if ! docker login $cibuild_ci_target_registry; then
-    cibuild_log_debug "could not login into $target_registry"
-  fi
 
   if [ -n "${_target_port}" ]; then
     cibuild_log_debug "set publish port"
