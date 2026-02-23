@@ -17,7 +17,6 @@ _pod=''
 # ---------- RUN HELPERS ----------
 cibuild__test_run_docker() {
   local entrypoint="$1" \
-        cmd \
         cid \
         test_run_timeout=$(cibuild_env_get 'test_run_timeout') \
         target_registry=$(cibuild_ci_target_registry)
@@ -494,31 +493,32 @@ cibuild__test_image() {
       ' "$(pwd)/${test_assert_file}" > "$tmpfile" || exit 1
 
       while IFS= read -r item; do
-
-        type=$(echo "$item" | jq -r '.type')
-        entrypoint=$(echo "$item" | jq -r '.entrypoint')
-        port=$(echo "$item" | jq -r '.port')
-        assert=$(echo "$item" | jq -r '.assert')
+      
+        type=$(printf '%s\n' "$item" | jq -r '.type')
+        entrypoint=$(printf '%s\n' "$item" | jq -r '.entrypoint')
+        port=$(printf '%s\n' "$item" | jq -r '.port')
+        assert=$(printf '%s\n' "$item" | jq -r '.assert')
+        cmd_json=$(printf '%s\n' "$item" | jq -c '.cmd // []')
 
         set --
+          while IFS= read -r arg; do
+            set -- "$@" "$arg"
+          done <<EOF
+$(printf '%s\n' "$cmd_json" | jq -r '.[]')
+EOF
 
-        echo "$item" | jq -r '.cmd[]' 2>/dev/null | while IFS= read -r arg; do
-          set -- "$@" "$arg"
-        done
-
-        case "$type" in
-          log)
-            assert_log "$assert" "$entrypoint" "$@"
-            ;;
-          response)
-            assert_response "$assert" "$port" "$entrypoint" "$@"
-            ;;
-          *)
-            cibuild_main_err "unknown assert type: $type"
-            ;;
-        esac
-
-      done < "$tmpfile"
+      case "$type" in
+        log)
+          assert_log "$assert" "$entrypoint" "$@"
+          ;;
+        response)
+          assert_response "$assert" "$port" "$entrypoint" "$@"
+          ;;
+        *)
+          cibuild_main_err "unknown assert type: $type"
+          ;;
+      esac
+    done < "$tmpfile"
 
       rm -f "$tmpfile"
       ;;
