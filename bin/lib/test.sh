@@ -99,13 +99,16 @@ cibuild__test_run_docker() {
           break
         fi
         ;;
-      exited|dead)
-        cibuild_log_err "[failed] container exited early (status=$status)"
+      exited|dead|removing)
+        cibuild_log_err "[failed] container exited early (status=$status, cid=$cid)"
         docker logs "$cid" 2>/dev/null || true
         docker rm -f "$cid" >/dev/null 2>&1
         exit 1
         ;;
       unknown)
+        cibuild_main_err "[failed] container not found (cid=$cid)"
+        ;;
+      *)
         cibuild_main_err "[failed] container not found (cid=$cid)"
         ;;
     esac
