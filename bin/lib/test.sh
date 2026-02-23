@@ -454,17 +454,21 @@ cibuild__test_image() {
   
   cibuild_log_debug "test mode: $mode"
 
-  local test_script_file=$(cibuild_env_get 'test_script_file') \
-        test_assert_file=$(cibuild_env_get 'test_assert_file')
+  local test_script_file
+  local test_assert_file
+  test_script_file=$(cibuild_env_get 'test_script_file')
+  test_assert_file=$(cibuild_env_get 'test_assert_file')
 
   case "$mode" in
     script)
       cibuild_log_debug "script"
       . "$(pwd)/${test_script_file}"
       ;;
+
     assert)
       cibuild_log_debug "assert"
-
+      tmpfile=$(mktemp -d /tmp/cibuild_asserts.XXXXXX)
+      #tmpfile="/tmp/cibuild_asserts.$$"
       jq -c '
       .[] |
       {
@@ -483,19 +487,21 @@ cibuild__test_image() {
         assert,
         cmd: (.cmd // [])
       }
-      ' "$(pwd)/${test_assert_file}" |
+      ' "$(pwd)/${test_assert_file}" > "$tmpfile" || exit 1
+
       while IFS= read -r item; do
 
         type=$(echo "$item" | jq -r '.type')
         entrypoint=$(echo "$item" | jq -r '.entrypoint')
         port=$(echo "$item" | jq -r '.port')
         assert=$(echo "$item" | jq -r '.assert')
+
         set --
-        while IFS= read -r arg; do
+
+        echo "$item" | jq -r '.cmd[]' 2>/dev/null | while IFS= read -r arg; do
           set -- "$@" "$arg"
-        done <<EOF
-$(echo "$item" | jq -r '.cmd[]')
-EOF
+        done
+
         case "$type" in
           log)
             assert_log "$assert" "$entrypoint" "$@"
@@ -507,10 +513,76 @@ EOF
             cibuild_main_err "unknown assert type: $type"
             ;;
         esac
-      done
+
+      done < "$tmpfile"
+
+      rm -f "$tmpfile"
       ;;
   esac
 }
+
+# cibuild__test_image() {
+#   mode=$1
+  
+#   cibuild_log_debug "test mode: $mode"
+
+#   local test_script_file=$(cibuild_env_get 'test_script_file') \
+#         test_assert_file=$(cibuild_env_get 'test_assert_file')
+
+#   case "$mode" in
+#     script)
+#       cibuild_log_debug "script"
+#       . "$(pwd)/${test_script_file}"
+#       ;;
+#     assert)
+#       cibuild_log_debug "assert"
+
+#       jq -c '
+#       .[] |
+#       {
+#         type,
+#         entrypoint:
+#         (if has("entrypoint")
+#         then
+#           if (.entrypoint | type == "string")
+#           then .entrypoint
+#           else error("entrypoint must be string")
+#           end
+#         else
+#           "keep"
+#         end),
+#         port: (.port // ""),
+#         assert,
+#         cmd: (.cmd // [])
+#       }
+#       ' "$(pwd)/${test_assert_file}" |
+#       while IFS= read -r item; do
+
+#         type=$(echo "$item" | jq -r '.type')
+#         entrypoint=$(echo "$item" | jq -r '.entrypoint')
+#         port=$(echo "$item" | jq -r '.port')
+#         assert=$(echo "$item" | jq -r '.assert')
+#         set --
+#         while IFS= read -r arg; do
+#           set -- "$@" "$arg"
+#         done <<EOF
+# $(echo "$item" | jq -r '.cmd[]')
+# EOF
+#         case "$type" in
+#           log)
+#             assert_log "$assert" "$entrypoint" "$@"
+#             ;;
+#           response)
+#             assert_response "$assert" "$port" "$entrypoint" "$@"
+#             ;;
+#           *)
+#             cibuild_main_err "unknown assert type: $type"
+#             ;;
+#         esac
+#       done
+#       ;;
+#   esac
+# }
 
 
 cibuild_test_run() {
