@@ -56,7 +56,8 @@ cibuild__release_create_index() {
         target_registry=$(cibuild_ci_target_registry) \
         attestation_digest \
         image_digest \
-        release_signature=$(cibuild_env_get 'release_signature')
+        release_signature=$(cibuild_env_get 'release_signature') \
+        release_keep_build_images=$(cibuild_env_get 'release_keep_build_images')
 
   platforms=$(echo "$build_platforms" | tr ',' ' ')
 
@@ -66,7 +67,6 @@ cibuild__release_create_index() {
   for platform in $platforms; do
     platform_name=$(echo "$platform" | tr '/' '-')
     ref="${target_image}-${platform_name}:${build_tag}"
-
     if regctl -v error manifest head "$ref" >/dev/null 2>&1; then
       create_args="$create_args --ref $ref --platform $platform"
       found=1
@@ -78,9 +78,6 @@ cibuild__release_create_index() {
   if [ "$found" -eq 0 ]; then
     cibuild_main_err "no platform images found, cannot create index ${target_image}:${build_tag}"
   fi
-
-  # create new tmp index
-  #cibuild__target_digest=$(regctl -v error index create "$target_image" $create_args)
 
   tmp_tag="${build_tag}_tmp"
   if ! regctl -v error index create "$target_image:$tmp_tag" $create_args; then
@@ -127,10 +124,6 @@ cibuild__release_create_index() {
   # save this to internal variable, don't use build_tag anymore it is just a pointer to the final digest
   cibuild__target_digest=$(regctl -v error manifest head "${target_image}:${tmp_tag}")
   cibuild_log_debug "new index digest: $cibuild__target_digest"
-
-  # if ! regctl -v error tag delete "${target_image}:${tmp_tag}"; then
-  #   cibuild_log_err "error deleting ${target_image}:${tmp_tag}"
-  # fi
 
   if [ "${release_signature:-0}" = "1" ]; then
     cibuild_log_debug "signing ${target_image}@${cibuild__target_digest}"
@@ -181,6 +174,19 @@ cibuild__release_create_index() {
     cibuild_log_err "failed to set ${target_image}:${build_tag} to ${target_image}@${cibuild__target_digest}"
   fi
 
+  # check permissions
+  if [ "$release_keep_build_images" = "0" ]; then
+    if ! regctl -v error tag delete "${target_image}:${tmp_tag}"; then
+      cibuild_log_err "error deleting ${target_image}:${tmp_tag}"
+    fi
+    for platform in $platforms; do
+      platform_name=$(echo "$platform" | tr '/' '-')
+      ref="${target_image}-${platform_name}:${build_tag}"
+      if ! regctl -v error tag delete "${ref}"; then
+        cibuild_log_err "error deleting ${ref}"
+      fi
+    done
+  fi
 }
 
 cibuild__release_image_tags() {
