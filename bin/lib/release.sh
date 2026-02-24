@@ -57,7 +57,8 @@ cibuild__release_create_index() {
         attestation_digest \
         image_digest \
         release_signature=$(cibuild_env_get 'release_signature') \
-        release_keep_build_images=$(cibuild_env_get 'release_keep_build_images')
+        release_keep_platform_images=$(cibuild_env_get 'release_keep_platform_images') \
+        release_keep_tmp_tag=$(cibuild_env_get 'release_keep_tmp_tag')
 
   platforms=$(echo "$build_platforms" | tr ',' ' ')
 
@@ -174,18 +175,22 @@ cibuild__release_create_index() {
     cibuild_log_err "failed to set ${target_image}:${build_tag} to ${target_image}@${cibuild__target_digest}"
   fi
 
-  # check permissions
-  if [ "$release_keep_build_images" = "0" ]; then
-    if ! regctl -v error tag delete "${target_image}:${tmp_tag}"; then
-      cibuild_log_err "error deleting ${target_image}:${tmp_tag}"
-    fi
+  if [ "$release_keep_platform_images" = "0" ]; then
     for platform in $platforms; do
       platform_name=$(echo "$platform" | tr '/' '-')
       ref="${target_image}-${platform_name}:${build_tag}"
+      cibuild_log_debug "try to delete tag ${ref}"
       if ! regctl -v error tag delete "${ref}"; then
         cibuild_log_err "error deleting ${ref}"
       fi
     done
+  fi
+
+  if [ "$release_keep_tmp_tag" = "0" ]; then
+    cibuild_log_debug "try to delete ${target_image}:${tmp_tag}"
+    if ! regctl -v error tag delete "${target_image}:${tmp_tag}"; then
+      cibuild_log_err "error deleting ${target_image}:${tmp_tag}"
+    fi
   fi
 }
 

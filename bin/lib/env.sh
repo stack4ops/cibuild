@@ -57,7 +57,8 @@ release_minor_tag_paging_limit=10000
 release_image_tags=
 release_minor_tag_regex=
 release_signature=0
-release_keep_build_images=0
+release_keep_platform_images=1
+release_keep_tmp_tag=0
 '
 
 _CIBUILD_ENV_VARS=""
