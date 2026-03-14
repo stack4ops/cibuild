@@ -20,10 +20,7 @@ if [ ! -d "/tmp/cibuilder.locked" ]; then
             echo "delete existing /home/user/bin folder"
             rm -r "bin"
         fi
-
-        curl -L -s "${CIBUILDER_BIN_URL}/${CIBUILDER_BIN_REF}.tar.gz" \
-        | tar xzf - --strip-components=2 "cibuild-${CIBUILDER_BIN_REF}/bin"
-
+        curl -L -s "${CIBUILDER_BIN_URL}/${CIBUILDER_BIN_REF}.tar.gz" | tar xzf - --strip-components=1 "cibuild-${CIBUILDER_BIN_REF}/bin"
         chmod -R 755 "bin"
     fi
 fi
