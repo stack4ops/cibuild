@@ -262,6 +262,7 @@ cibuild__build_image_buildx() {
         build_opts=$(cibuild_env_get 'build_opts') \
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
+        build_set_ci_secrets=$(cibuild_env_get 'build_set_ci_secrets') \
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
@@ -305,6 +306,10 @@ cibuild__build_image_buildx() {
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
     cibuild_log_debug "build_all_proxy: $build_all_proxy"
     
+    if [ "${build_set_ci_secrets}" = "1" ]; then
+      . "${CIBUILD_LIB_PATH}/secrets.sh"
+    fi
+
     if [ "${build_use_cache}" = "0" ]; then
       no_cache="--no-cache"
     else
@@ -327,9 +332,9 @@ cibuild__build_image_buildx() {
       --tag "${target_image}-${platform_name}:${build_tag}" \
       --file "${container_file}" \
       --push \
+      $@ \
       .; then
       cibuild_main_err "Build failed"
-      
     fi
   done
 }
@@ -346,6 +351,7 @@ cibuild__build_image_buildctl() {
         build_opts=$(cibuild_env_get 'build_opts') \
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
+        build_set_ci_secrets=$(cibuild_env_get 'build_set_ci_secrets') \
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
@@ -419,7 +425,11 @@ cibuild__build_image_buildctl() {
     cibuild_log_debug "build_https_proxy: $build_https_proxy"
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
     cibuild_log_debug "build_all_proxy: $build_all_proxy"
-
+    
+    if [ "${build_set_ci_secrets}" = "1" ]; then
+      . "${CIBUILD_LIB_PATH}/secrets.sh"
+    fi
+    
     if [ "${build_use_cache}" = "0" ]; then
       no_cache="--no-cache"
     else
@@ -443,9 +453,9 @@ cibuild__build_image_buildctl() {
       ${build_args:-} \
       ${no_cache:-} \
       ${cache:-} \
-      --output type=image,name="${target_image}-${platform_name}:${build_tag:?}",oci-artifact=true,push=true; then
-      cibuild_main_err "failed: $build_command"
-      
+      --output type=image,name="${target_image}-${platform_name}:${build_tag:?}",oci-artifact=true,push=true \
+      $@; then
+      cibuild_main_err "failed: $build_command"   
     fi
   done
 
