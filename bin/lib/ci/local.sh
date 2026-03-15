@@ -184,6 +184,9 @@ cibuild__ci_init() {
 
   cibuild_log_info "init ci: $(cibuild_ci_type)"
 
+  # to avoid "dubious ownership" error in local adapter bind mounts"
+  git config --global safe.directory '*'
+
   if _CIBUILD_CI_COMMIT="$(git rev-parse HEAD 2>/dev/null)"; then
     :
   else
