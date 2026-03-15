@@ -122,6 +122,10 @@ cibuild_ci_base_registry_pass() {
   fi
 }
 
+cibuild_ci_default_cache_registry() {
+  printf '%s\n' "target_registry"
+}
+
 # base registry, image path and tag: are processed from Dockerfile
 
 # target image data

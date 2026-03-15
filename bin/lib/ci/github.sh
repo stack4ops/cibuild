@@ -96,6 +96,10 @@ cibuild_ci_registry_pass() {
   fi
 }
 
+cibuild_ci_default_cache_registry() {
+  printf '%s\n' "ci_registry"
+}
+
 cibuild_ci_image_path() {
   printf '%s\n' "${CIBUILD_CI_IMAGE_PATH:-$GITHUB_REPOSITORY}"
 }

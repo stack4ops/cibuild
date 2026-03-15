@@ -183,7 +183,8 @@ cibuild__build_get_cache_from_opt() {
 cibuild__build_get_import_cache_args() {
   local arch=$1 \
         build_tag=$(cibuild_ci_build_tag) \
-        build_import_cache=$(cibuild_env_get 'build_import_cache')
+        _build_import_cache=$(cibuild_env_get 'build_import_cache') \
+        build_import_cache=${_build_import_cache:-$(cibuild_ci_default_cache_registry)}
 
   case "$build_import_cache" in
     "")
@@ -205,7 +206,8 @@ cibuild__build_get_export_cache_args() {
   local arch=$1 \
         build_tag=$(cibuild_ci_build_tag) \
         cache_mode=$(cibuild_env_get 'build_export_cache_mode') \
-        build_export_cache=$(cibuild_env_get 'build_export_cache')
+        _build_export_cache=$(cibuild_env_get 'build_export_cache') \
+        build_export_cache=${_build_export_cache:-$(cibuild_ci_default_cache_registry)}
 
   case "$build_export_cache" in
     "")
