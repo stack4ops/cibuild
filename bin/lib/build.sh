@@ -306,9 +306,7 @@ cibuild__build_image_buildx() {
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
     cibuild_log_debug "build_all_proxy: $build_all_proxy"
     
-    if [ "${build_set_ci_secrets}" = "1" ]; then
-      . "${CIBUILD_LIB_PATH}/secrets.sh"
-    fi
+    . "${CIBUILD_LIB_PATH}/args.sh"
 
     if [ "${build_use_cache}" = "0" ]; then
       no_cache="--no-cache"
@@ -426,9 +424,7 @@ cibuild__build_image_buildctl() {
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
     cibuild_log_debug "build_all_proxy: $build_all_proxy"
     
-    if [ "${build_set_ci_secrets}" = "1" ]; then
-      . "${CIBUILD_LIB_PATH}/secrets.sh"
-    fi
+    . "${CIBUILD_LIB_PATH}/args.sh"
     
     if [ "${build_use_cache}" = "0" ]; then
       no_cache="--no-cache"
@@ -502,6 +498,8 @@ cibuild__build_image_kaniko() {
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
     cibuild_log_debug "build_all_proxy: $build_all_proxy"
 
+    . "${CIBUILD_LIB_PATH}/args.sh"
+
     if [ "${build_use_cache}" = "0" ]; then
       cache_args="--cache=false"
     else
@@ -523,7 +521,8 @@ cibuild__build_image_kaniko() {
       --build-arg NO_PROXY="${build_no_proxy}" \
       --build-arg ALL_PROXY="${build_all_proxy}" \
       ${build_args} \
-      ${build_opts}; then
+      ${build_opts} \
+      $@; then
       cibuild_main_err "kaniko build failed for ${platform}";
     fi
   done

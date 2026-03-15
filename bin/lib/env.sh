@@ -39,7 +39,6 @@ build_provenance_mode=max
 build_buildx_driver=dockercontainer
 build_buildkit_service_account=
 build_kubernetes_replicas=1
-build_set_ci_secrets=0
 test_enabled=0
 test_pre_script=
 test_post_script=
