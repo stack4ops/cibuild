@@ -183,11 +183,11 @@ cibuild__release_create_index() {
 
   if [ "${release_signature:-0}" = "1" ]; then
     cibuild__sign "${target_image}@${cibuild__target_digest}"
-    for platform in $platforms; do
-      platform_name=$(echo "$platform" | tr '/' '-')
-      image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag} --platform ${platform})
-      cibuild__sign "${target_image}-${platform_name}@${image_digest}"
-    done
+    # for platform in $platforms; do
+    #   platform_name=$(echo "$platform" | tr '/' '-')
+    #   image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag} --platform ${platform})
+    #   cibuild__sign "${target_image}-${platform_name}@${image_digest}"
+    # done
   fi
 
   if [ "$release_keep_platform_images" = "0" ]; then
