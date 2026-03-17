@@ -49,19 +49,23 @@ cibuild__sign() {
   
   local image=$1
 
+  local cibuild_release_cosign_new_bundle_format=$(cibuild_env_get 'release_cosign_new_bundle_format')
+
   cibuild_log_debug "signing $image"
 
   export COSIGN_PASSWORD=""
-  
-  # for harbor GUI see: https://github.com/goharbor/harbor/issues/22592
-  # export COSIGN_DOCKER_MEDIA_TYPES=1
 
   local max_sign_retries=3
   local sign_try=1
   local sign_success=0
+  local new_bundle_format=""
+
+  if [ "${cibuild_release_cosign_new_bundle_format}" = "0" ]; then
+    new_bundle_format="--new-bundle-format=false"
+  fi
 
   while [ $sign_try -le $max_sign_retries ]; do
-    if cosign sign --yes --new-bundle-format=false --use-signing-config=false --recursive --key /tmp/cosign.key "${image}"; then
+    if cosign sign --yes $new_bundle_format --recursive --key /tmp/cosign.key "${image}"; then
       sign_success=1
       break
     fi
