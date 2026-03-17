@@ -185,7 +185,8 @@ cibuild__release_create_index() {
     cibuild__sign "${target_image}@${cibuild__target_digest}"
     for platform in $platforms; do
       platform_name=$(echo "$platform" | tr '/' '-')
-      cibuild__sign "${target_image}-${platform_name}:${build_tag}"
+      image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag} --platform ${platform})
+      cibuild__sign "${target_image}-${platform_name}@${image_digest}"
     done
   fi
 
