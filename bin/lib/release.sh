@@ -61,7 +61,7 @@ cibuild__sign() {
   local sign_success=0
 
   while [ $sign_try -le $max_sign_retries ]; do
-    if cosign sign --new-bundle-format=false --use-signing-config=false --key /tmp/cosign.key "${image}"; then
+    if cosign sign --yes --new-bundle-format=false --use-signing-config=false --key /tmp/cosign.key "${image}"; then
       sign_success=1
       break
     fi
