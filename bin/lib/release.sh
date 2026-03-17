@@ -126,6 +126,11 @@ cibuild__release_create_index() {
   cibuild__target_digest=$(regctl -v error manifest head "${target_image}:${tmp_tag}")
   cibuild_log_debug "new index digest: $cibuild__target_digest"
 
+  # set build_tag
+  if ! regctl -v error image copy ${target_image}@${cibuild__target_digest} ${target_image}:${build_tag} >/dev/null 2>&1; then
+    cibuild_log_err "failed to set ${target_image}:${build_tag} to ${target_image}@${cibuild__target_digest}"
+  fi
+
   if [ "${release_signature:-0}" = "1" ]; then
     cibuild_log_debug "signing ${target_image}@${cibuild__target_digest}"
 
@@ -168,11 +173,6 @@ cibuild__release_create_index() {
       sleep $verify_interval
       waited=$((waited+verify_interval))
     done
-  fi
-
-  # set build_tag
-  if ! regctl -v error image copy ${target_image}@${cibuild__target_digest} ${target_image}:${build_tag} >/dev/null 2>&1; then
-    cibuild_log_err "failed to set ${target_image}:${build_tag} to ${target_image}@${cibuild__target_digest}"
   fi
 
   if [ "$release_keep_platform_images" = "0" ]; then
