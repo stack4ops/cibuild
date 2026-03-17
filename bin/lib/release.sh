@@ -45,6 +45,53 @@ cibuild__release_copy_tag() {
   return 0
 }
 
+cibuild__sign() {
+  
+  local image=$1
+
+  cibuild_log_debug "signing $image"
+
+  export COSIGN_PASSWORD=""
+
+  local max_sign_retries=3
+  local sign_try=1
+  local sign_success=0
+
+  while [ $sign_try -le $max_sign_retries ]; do
+    if cosign sign --key /tmp/cosign.key "${image}"; then
+      sign_success=1
+      break
+    fi
+
+    cibuild_log_debug "cosign sign failed (attempt ${sign_try}/${max_sign_retries})"
+    sign_try=$((sign_try+1))
+    sleep 3
+  done
+
+  if [ "$sign_success" -ne 1 ]; then
+    cibuild_log_err "ERROR: cosign signing failed after ${max_sign_retries} attempts"
+  fi
+
+  local max_verify_wait=30
+  local verify_interval=3
+  local waited=0
+
+  while true; do
+    if cosign verify --key /tmp/cosign.pub "${target_image}@${cibuild__target_digest}" >/dev/null 2>&1; then
+      cibuild_log_info "verified after $waited sec"
+      break
+    fi
+
+    if [ $waited -ge $max_verify_wait ]; then
+      cibuild_log_err "ERROR: Signature not available after ${max_verify_wait}s"
+      exit 1
+    fi
+
+    sleep $verify_interval
+    waited=$((waited+verify_interval))
+  done
+}
+
 cibuild__release_create_index() {
   
   local target_image=$(cibuild_ci_target_image) \
@@ -132,46 +179,10 @@ cibuild__release_create_index() {
   fi
 
   if [ "${release_signature:-0}" = "1" ]; then
-    cibuild_log_debug "signing ${target_image}@${cibuild__target_digest}"
-
-    export COSIGN_PASSWORD=""
-
-    local max_sign_retries=3
-    local sign_try=1
-    local sign_success=0
-
-    while [ $sign_try -le $max_sign_retries ]; do
-      if cosign sign --key /tmp/cosign.key "${target_image}@${cibuild__target_digest}"; then
-        sign_success=1
-        break
-      fi
-
-      cibuild_log_debug "cosign sign failed (attempt ${sign_try}/${max_sign_retries})"
-      sign_try=$((sign_try+1))
-      sleep 3
-    done
-
-    if [ "$sign_success" -ne 1 ]; then
-      cibuild_log_err "ERROR: cosign signing failed after ${max_sign_retries} attempts"
-    fi
-
-    local max_verify_wait=30
-    local verify_interval=3
-    local waited=0
-
-    while true; do
-      if cosign verify --key /tmp/cosign.pub "${target_image}@${cibuild__target_digest}" >/dev/null 2>&1; then
-        cibuild_log_info "verified after $waited sec"
-        break
-      fi
-
-      if [ $waited -ge $max_verify_wait ]; then
-        cibuild_log_err "ERROR: Signature not available after ${max_verify_wait}s"
-        exit 1
-      fi
-
-      sleep $verify_interval
-      waited=$((waited+verify_interval))
+    cibuild__sign "${target_image}@${cibuild__target_digest}"
+    for platform in $platforms; do
+      platform_name=$(echo "$platform" | tr '/' '-')
+      cibuild__sign "${target_image}-${platform_name}:${build_tag}"
     done
   fi
 
