@@ -69,7 +69,7 @@ cibuild__sign() {
   cibuild_log_debug "cosign sign --yes $new_bundle_format $@ --recursive --key /tmp/cosign.key ${image}"
   
   while [ $sign_try -le $max_sign_retries ]; do
-    if cosign sign --yes $new_bundle_format "$@" --use-signing-config=false --recursive --key /tmp/cosign.key "${image}"; then
+    if cosign sign --yes $new_bundle_format "$@" --recursive --key /tmp/cosign.key "${image}"; then
       sign_success=1
       break
     fi
