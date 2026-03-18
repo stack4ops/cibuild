@@ -53,6 +53,8 @@ cibuild__sign() {
 
   cibuild_log_debug "signing $image"
 
+  . "${CIBUILD_LIB_PATH}/cosign_annotations.sh"
+
   export COSIGN_PASSWORD=""
 
   local max_sign_retries=3
@@ -64,10 +66,10 @@ cibuild__sign() {
     new_bundle_format="--new-bundle-format=false --use-signing-config=false"
   fi
 
-  cibuild_log_debug "cosign sign --yes $new_bundle_format --recursive --key /tmp/cosign.key ${image}"
+  cibuild_log_debug "cosign sign --yes $new_bundle_format $@ --recursive --key /tmp/cosign.key ${image}"
   
   while [ $sign_try -le $max_sign_retries ]; do
-    if cosign sign --yes $new_bundle_format --use-signing-config=false --recursive --key /tmp/cosign.key "${image}"; then
+    if cosign sign --yes $new_bundle_format "$@" --use-signing-config=false --recursive --key /tmp/cosign.key "${image}"; then
       sign_success=1
       break
     fi
