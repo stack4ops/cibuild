@@ -332,7 +332,7 @@ cibuild__build_image_buildx() {
       --tag "${target_image}-${platform_name}:${build_tag}" \
       --file "${container_file}" \
       --push \
-      $@ \
+      "$@" \
       .; then
       cibuild_main_err "Build failed"
     fi
@@ -452,7 +452,7 @@ cibuild__build_image_buildctl() {
       ${no_cache:-} \
       ${cache:-} \
       --output type=image,name="${target_image}-${platform_name}:${build_tag:?}",oci-artifact=true,push=true \
-      $@; then
+      "$@"; then
       cibuild_main_err "failed: $build_command"   
     fi
   done
@@ -524,7 +524,7 @@ cibuild__build_image_kaniko() {
       --build-arg ALL_PROXY="${build_all_proxy}" \
       ${build_args} \
       ${build_opts} \
-      $@; then
+      "$@"; then
       cibuild_main_err "kaniko build failed for ${platform}";
     fi
   done
