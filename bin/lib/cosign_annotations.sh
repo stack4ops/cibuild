@@ -9,7 +9,8 @@ while IFS='=' read -r _key _value; do
   case "$_key" in
     CIBUILD_RELEASE_COSIGN_ANNOTATION_*)
       _name="${_key#CIBUILD_RELEASE_COSIGN_ANNOTATION_}"
-      set -- "$@" "-a" "${_name}=${_value}"
+      annotation_key=$(echo "${_name}" | tr '[:upper:]' '[:lower:]' | sed 's/__/./g')
+      set -- "$@" "-a" "${annotation_key}=${_value}"
       ;;
   esac
 done << EOF
