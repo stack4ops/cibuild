@@ -1,4 +1,4 @@
-# lib/args.sh – source with . 
+# lib/build_args.sh – source with . 
 #
 # CIBUILD_BUILD_SECRET_NPM_TOKEN=xyz  --secret id=NPM_TOKEN,env=CIBUILD_BUILD_SECRET_NPM_TOKEN
 # CIBUILD_BUILD_ARG_NODE_VERSION=20   --opt build-arg:NODE_VERSION=20  (buildctl)

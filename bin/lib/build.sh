@@ -308,7 +308,7 @@ cibuild__build_image_buildx() {
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
     cibuild_log_debug "build_all_proxy: $build_all_proxy"
     
-    . "${CIBUILD_LIB_PATH}/args.sh"
+    . "${CIBUILD_LIB_PATH}/build_args.sh"
 
     if [ "${build_use_cache}" = "0" ]; then
       no_cache="--no-cache"
@@ -426,7 +426,7 @@ cibuild__build_image_buildctl() {
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
     cibuild_log_debug "build_all_proxy: $build_all_proxy"
     
-    . "${CIBUILD_LIB_PATH}/args.sh"
+    . "${CIBUILD_LIB_PATH}/build_args.sh"
     
     if [ "${build_use_cache}" = "0" ]; then
       no_cache="--no-cache"
@@ -500,7 +500,7 @@ cibuild__build_image_kaniko() {
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
     cibuild_log_debug "build_all_proxy: $build_all_proxy"
 
-    . "${CIBUILD_LIB_PATH}/args.sh"
+    . "${CIBUILD_LIB_PATH}/build_args.sh"
 
     if [ "${build_use_cache}" = "0" ]; then
       cache_args="--cache=false"
