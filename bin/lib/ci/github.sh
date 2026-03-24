@@ -174,6 +174,48 @@ cibuild_ci_target_image_full() {
   printf '%s\n' "$(cibuild_ci_target_registry)/$(cibuild_ci_target_image_path):$(cibuild_ci_build_tag)"
 }
 
+# release image data
+
+cibuild_ci_release_registry() {
+  printf '%s\n' "${CIBUILD_RELEASE_REGISTRY}"
+}
+
+cibuild_ci_release_registry_auth() {
+  if [ -z "${CIBUILD_RELEASE_REGISTRY_USER:-}" ] || [ -z "${CIBUILD_RELEASE_REGISTRY_PASS:-}" ]; then
+    printf '%s\n' ""
+  else
+    printf '%s\n' "${CIBUILD_RELEASE_REGISTRY_AUTH:-1}"
+  fi
+}
+
+cibuild_ci_release_registry_user() {
+  if [ "$(cibuild_ci_release_registry_auth)" = "1" ]; then
+    printf '%s\n' "${CIBUILD_RELEASE_REGISTRY_USER:-}"
+  else
+    printf '%s\n' ""
+  fi
+}
+
+cibuild_ci_release_registry_pass() {
+  if [ "$(cibuild_ci_release_registry_auth)" = "1" ]; then
+    printf '%s\n' "${CIBUILD_RELEASE_REGISTRY_PASS:-}"
+  else
+    printf '%s\n' ""
+  fi
+}
+
+cibuild_ci_release_image_path() {
+  printf '%s\n' "${CIBUILD_RELEASE_IMAGE_PATH:-$GITHUB_REPOSITORY}"
+}
+
+cibuild_ci_release_image() {
+  printf '%s\n' "$(cibuild_ci_release_registry)/$(cibuild_ci_release_image_path)"
+}
+
+cibuild_ci_release_image_full() {
+  printf '%s\n' "$(cibuild_ci_release_registry)/$(cibuild_ci_release_image_path):$(cibuild_ci_build_tag)"
+}
+
 cibuild__ci_init() {
 
   cibuild_log_info "init ci: $(cibuild_ci_type)"

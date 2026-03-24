@@ -246,9 +246,10 @@ cibuild__core_create_docker_auth_config() {
 
 cibuild__core_create_regctl_auth_config() {
   
-  local logged_in=" "  reg
+  local logged_in=" "\
+        reg
 
-  for registry in base_registry target_registry ci_registry; do
+  for registry in base_registry target_registry release_registry ci_registry; do
     case "$registry" in
       base_registry)
         local reg=$(cibuild_core_base_registry)

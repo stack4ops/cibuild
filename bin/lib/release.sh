@@ -351,6 +351,106 @@ cibuild__release_minor_tag() {
   return 1
 }
 
+cibuild__release_create_regctl_auth_config() {
+  
+  local logged_in=" "\
+        reg
+
+  for registry in base_registry target_registry release_registry ci_registry; do
+    case "$registry" in
+      base_registry)
+        local reg=$(cibuild_core_base_registry)
+        local auth=$(cibuild_ci_base_registry_auth)
+        local user=$(cibuild_ci_base_registry_user)
+        local pass=$(cibuild_ci_base_registry_pass)
+      ;;
+      target_registry)
+        local reg=$(cibuild_ci_target_registry)
+        local auth=$(cibuild_ci_target_registry_auth)
+        local user=$(cibuild_ci_target_registry_user)
+        local pass=$(cibuild_ci_target_registry_pass)
+      ;;
+      release_registry)
+        local reg=$(cibuild_ci_release_registry)
+        local auth=$(cibuild_ci_release_registry_auth)
+        local user=$(cibuild_ci_release_registry_user)
+        local pass=$(cibuild_ci_release_registry_pass)
+      ;;
+      ci_registry)
+        local reg=$(cibuild_ci_registry)
+        local auth=$(cibuild_ci_registry_auth)
+        local user=$(cibuild_ci_registry_user)
+        local pass=$(cibuild_ci_registry_pass)
+      ;;
+    esac
+    if case " $logged_in " in *" $reg "*) true ;; *) false ;; esac; then
+      cibuild_log_debug "already logged in: $reg"
+    else
+      if [ "$auth" = "1" ]; then
+        regctl registry set "$reg" --hostname "$reg" --skip-check
+        regctl registry login "$reg" --user "$user" --pass "$pass" --skip-check
+        logged_in="$logged_in $reg"
+      fi
+    fi
+  done
+  regctl registry config
+  #cat ${HOME}/.regctl/config.json
+}
+
+cibuild__mirror_registry_get_var() {
+  local reg="$1"
+  local key="$2"
+  prefix="CIBUILD_MIRROR_REGISTRY"
+  if [ -n "$key" ]; then
+    env | grep "^${prefix}_${reg}_${key}=" | cut -d'=' -f2-
+  else
+    env | grep "^${prefix}_${reg}=" | cut -d'=' -f2-
+  fi
+}
+
+cibuild__release_registry() {
+  local build_tag=$(cibuild_ci_build_tag) \
+        target_image=$(cibuild_ci_target_image) \
+        target_image_path=$(cibuild_ci_target_image_path)
+
+  registries=$(env | grep -E '^CIBUILD_MIRROR_REGISTRY_[A-Z]+=' | sed 's/^CIBUILD_MIRROR_REGISTRY_//' | sed 's/=.*//')
+  
+  for registry in $registries; do
+    cibuild_log_debug "get keys for mirror ${registry}"
+    local reg=$(cibuild__mirror_registry_get_var "${registry}") \
+          user=$(cibuild__mirror_registry_get_var "${registry}" "USER") \
+          pass=$(cibuild__mirror_registry_get_var "${registry}" "PASS") \
+          _image_path=$(cibuild__mirror_registry_get_var "${registry}" "IMAGE_PATH") \
+          keep_build_tag=$(cibuild__mirror_registry_get_var "${registry}" "KEEP_BUILD_TAG") \
+          keep_image_tags=$(cibuild__mirror_registry_get_var "${registry}" "KEEP_IMAGE_TAGS") \
+          image_tags=$(cibuild__mirror_registry_get_var "${registry}" "IMAGE_TAGS") \
+
+    # login
+    if [ -f "${HOME}/.regctl/config.json" ]; then
+      cibuild_log_debug "removing regctl credentials"
+      rm "${HOME}/.regctl/config.json"
+    fi
+    if [ -n "${user}" ] && [ -n "${pass}" ]; then
+      regctl registry set "$reg" --hostname "$reg" --skip-check
+      regctl registry login "$reg" --user "$user" --pass "$pass" --skip-check
+      regctl registry config
+    fi
+
+    image_path=${_image_path:-$target_image_path}
+
+    if [ "${keep_build_tag:-1}" = "1" ]; then
+      if ! regctl -v error image copy --referrers --digest-tags ${target_image}:${build_tag} ${reg}/${image_path}:${build_tag} >/dev/null 2>&1; then
+        cibuild_log_err "failed to set tag ${target_image}:${build_tag} for ${reg}/${image_path}:${build_tag}"
+        return 1
+      fi
+    fi
+  done
+
+  #regctl registry config
+  #cibuild_log_debug "copy image to additional release_registry"
+  #if ! regctl -v error image copy ${target_image}:${cibuild__target_digest} ${target_image}:${copy_to_tag} >/dev/null 2>&1; then
+}
+
 cibuild_release_run() {
   local release_enabled=$(cibuild_env_get 'release_enabled') \
         release_signature=$(cibuild_env_get 'release_signature') \
@@ -382,6 +482,7 @@ cibuild_release_run() {
   cibuild__release_create_index
   cibuild__release_image_tags
   cibuild__release_minor_tag
+  cibuild__release_registry
 
   if ! cibuild_core_run_script release post; then
     exit 1
