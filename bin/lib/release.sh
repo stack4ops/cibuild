@@ -466,18 +466,26 @@ cibuild_release_run() {
     exit 1
   fi
 
-  if [ "${release_signature:-0}" = "1" ] && [ -z "${release_cosign_private_key:-}" ]; then
-    cibuild_main_err "CIBUILD_RELEASE_COSIGN_PRIVATE_KEY env var must not be empty"
-    exit 1
+  if [ "${release_signature:-0}" = "1" ]; then
+    # first check private key
+    if [ -z "${release_cosign_private_key:-}" ]; then
+      cibuild_main_err "CIBUILD_RELEASE_COSIGN_PRIVATE_KEY env var must not be empty"
+      exit 1
+    else
+      printf '%s\n' "$release_cosign_private_key" | base64 -d > /tmp/cosign.key
+    fi
+    # first check repo cosign.pub
+    if [ -f "cosign.pub" ]; then
+      cp cosign.pub /tmp/cosign.pub
+    else
+      # check env for pub key
+      if [ -n "${release_cosign_public_key:-}" ]; then
+        printf '%s\n' "$release_cosign_public_key" | base64 -d > /tmp/cosign.pub
+      else
+        cibuild_main_err "CIBUILD_RELEASE_COSIGN_PUBLIC_KEY env var must not be empty"
+        exit 1
+      fi
   fi
-
-  if [ "${release_signature:-0}" = "1" ] && [ -z "${release_cosign_public_key:-}" ]; then
-    cibuild_main_err "CIBUILD_RELEASE_COSIGN_PUBLIC_KEY env var must not be empty"
-    exit 1
-  fi
-
-  printf '%s\n' "$release_cosign_private_key" | base64 -d > /tmp/cosign.key
-  printf '%s\n' "$release_cosign_public_key" | base64 -d > /tmp/cosign.pub
   
   cibuild__release_create_index
   cibuild__release_image_tags
