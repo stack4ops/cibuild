@@ -485,6 +485,7 @@ cibuild_release_run() {
         cibuild_main_err "CIBUILD_RELEASE_COSIGN_PUBLIC_KEY env var must not be empty"
         exit 1
       fi
+    fi
   fi
   
   cibuild__release_create_index
