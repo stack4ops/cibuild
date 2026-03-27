@@ -360,6 +360,10 @@ cibuild_core_run_script() {
   return 0
 }
 
+cibuild_function_exists() {
+  type "$1" > /dev/null 2>&1
+}
+
 cibuild_core_init() {
   [ "${_CIBUILD_CORE_INIT_DONE:-}" = "1" ] && return
   _CIBUILD_CORE_INIT_DONE=1

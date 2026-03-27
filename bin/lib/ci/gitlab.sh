@@ -212,6 +212,21 @@ cibuild_ci_release_image_full() {
   printf '%s\n' "$(cibuild_ci_release_registry)/$(cibuild_ci_release_image_path):$(cibuild_ci_build_tag)"
 }
 
+cibuild__ci_get_base_cosign_annotations() {
+  [ -n "${CI_PROJECT_URL:-}" ] && \
+    printf -- '-a\norg.opencontainers.image.source=%s\n' "${CI_PROJECT_URL}"
+
+  [ -n "${CI_COMMIT_SHA:-}" ] && \
+    printf -- '-a\norg.opencontainers.image.revision=%s\n' "${CI_COMMIT_SHA}"
+
+  [ -n "${CI_COMMIT_TAG:-}${CI_COMMIT_SHORT_SHA:-}" ] && \
+    printf -- '-a\norg.opencontainers.image.version=%s\n' \
+      "${CI_COMMIT_TAG:-${CI_COMMIT_SHORT_SHA}}"
+
+  #[ -n "${CI_PIPELINE_CREATED_AT:-}" ] && \
+  #  printf -- '-a\norg.opencontainers.image.created=%s\n' "${CI_PIPELINE_CREATED_AT}"
+}
+
 cibuild__ci_init() {
 
   cibuild_log_info "init ci: $(cibuild_ci_type)"

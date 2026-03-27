@@ -257,4 +257,17 @@ cibuild__ci_init() {
 
 }
 
+cibuild__ci_get_base_cosign_annotations() {
+  
+  printf -- '-a\norg.opencontainers.image.source=%s\n' "local"
+
+  [ -n "${_CIBUILD_CI_COMMIT:-}" ] && \
+    printf -- '-a\norg.opencontainers.image.revision=%s\n' "${_CIBUILD_CI_COMMIT}"
+
+  [ -n "${_CIBUILD_CI_REF}" ] && \
+    printf -- '-a\norg.opencontainers.image.version=%s\n' \
+      "${_CIBUILD_CI_REF}"
+
+}
+
 cibuild__ci_init

@@ -216,6 +216,19 @@ cibuild_ci_release_image_full() {
   printf '%s\n' "$(cibuild_ci_release_registry)/$(cibuild_ci_release_image_path):$(cibuild_ci_build_tag)"
 }
 
+cibuild__ci_get_base_cosign_annotations() {
+  [ -n "${GITHUB_SERVER_URL:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && \
+    printf -- '-a\norg.opencontainers.image.source=%s/%s\n' \
+      "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}"
+
+  [ -n "${GITHUB_SHA:-}" ] && \
+    printf -- '-a\norg.opencontainers.image.revision=%s\n' "${GITHUB_SHA}"
+
+  [ -n "${GITHUB_REF_NAME:-}" ] && \
+    printf -- '-a\norg.opencontainers.image.version=%s\n' "${GITHUB_REF_NAME}"
+
+}
+
 cibuild__ci_init() {
 
   cibuild_log_info "init ci: $(cibuild_ci_type)"

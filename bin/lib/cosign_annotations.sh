@@ -19,3 +19,12 @@ $(env)
 EOF
 
 unset _key _value _name
+
+# ci specific vars
+if cibuild_function_exists cibuild__ci_get_base_cosign_annotations; then
+  while IFS= read -r arg; do
+    [ -n "$arg" ] && set -- "$@" $arg
+  done << EOF
+$(cibuild__ci_get_base_cosign_annotations)
+EOF
+fi
