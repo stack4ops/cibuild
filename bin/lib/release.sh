@@ -474,15 +474,15 @@ cibuild_release_run() {
     else
       printf '%s\n' "$release_cosign_private_key" | base64 -d > /tmp/cosign.key
     fi
-    # first check repo cosign.pub
-    if [ -f "cosign.pub" ]; then
-      cp cosign.pub /tmp/cosign.pub
+    # first check env for pub key
+    if [ -n "${release_cosign_public_key:-}" ]; then
+      printf '%s\n' "$release_cosign_public_key" | base64 -d > /tmp/cosign.pub
     else
-      # check env for pub key
-      if [ -n "${release_cosign_public_key:-}" ]; then
-        printf '%s\n' "$release_cosign_public_key" | base64 -d > /tmp/cosign.pub
+      # check repo cosign.pub
+      if [ -f "cosign.pub" ]; then
+        cp cosign.pub /tmp/cosign.pub
       else
-        cibuild_main_err "CIBUILD_RELEASE_COSIGN_PUBLIC_KEY env var must not be empty"
+        cibuild_main_err "cosign.pub not exists"
         exit 1
       fi
     fi
