@@ -168,7 +168,7 @@ cibuild_ci_target_registry_pass() {
 }
 
 cibuild_ci_default_cache_registry() {
-  printf '%s\n' "ci_registry"
+  printf '%s\n' "target_registry"
 }
 
 cibuild_ci_target_image_path() {
