@@ -17,6 +17,10 @@ _CIBUILD_CI_COMMIT=""
 # string
 _CIBUILD_CI_REF=""
 
+# fixing values for repeated tagging
+_CIBUILD_DATE=""
+_CIBUILD_DATE_TIME=""
+
 cibuild_ci_type() { printf '%s\n' "local"; }
 
 cibuild__get_project_path() {
@@ -46,11 +50,10 @@ cibuild__get_project_path() {
   return 1
 }
 
-
 cibuild_ci_process_tag() {
   local tag="$1" \
-        date=$(date +%F) \
-        datetime=$(date +%F_%H-%M-%S)
+        date=${_CIBUILD_DATE:-$(date +%F)} \
+        datetime=${_CIBUILD_DATE_TIME:-$(date +%F_%H-%M-%S)}
 
   sed_escape() {
     printf '%s' "$1" | sed 's/[&\/]/\\&/g'
