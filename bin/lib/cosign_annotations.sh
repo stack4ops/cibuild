@@ -1,7 +1,4 @@
 # lib/cosign_annotations.sh – source with . 
-#
-# CIBUILD_RELEASE_COSIGN_ANNOTATION_org=hrz.uni-marburg.de    -a org=hrz.uni-marburg.de
-# CIBUILD_RELEASE_COSIGN_ANNOTATION_commit=$CI_COMMIT_SHA     -a commit=CI_COMMIT_SHA
 
 set --
 while IFS='=' read -r _key _value; do
