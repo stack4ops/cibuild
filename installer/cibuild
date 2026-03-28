@@ -87,4 +87,4 @@ docker run \
   -w /repo \
   --env-file ~/.config/cibuild/.env \
   -e "CIBUILD_RUN_CMD=${CIBUILD_RUN_CMD}" \
-  stack4ops/cibuilder:${CIBUILDER_REF}
+  ${CIBUILDER_IMAGE}:${CIBUILDER_REF}
