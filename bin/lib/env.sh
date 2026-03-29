@@ -175,5 +175,4 @@ cibuild_env_init() {
   _CIBUILD_ENV_INIT_DONE=1
   cibuild__env_detect_ci
   cibuild__env_apply_vars
-  #cibuild__env_detect_kubernetes
 }
