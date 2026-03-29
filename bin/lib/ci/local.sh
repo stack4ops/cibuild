@@ -51,17 +51,15 @@ cibuild__get_project_path() {
 }
 
 cibuild_ci_process_tag() {
-  local tag="$1" \
-        date=${_CIBUILD_DATE:-$(date +%F)} \
-        datetime=${_CIBUILD_DATE_TIME:-$(date +%F_%H-%M-%S)}
+  local tag="$1"
 
   sed_escape() {
     printf '%s' "$1" | sed 's/[&\/]/\\&/g'
   }
   
   printf '%s' "$tag" | sed \
-    -e "s/__DATE__/$(sed_escape "$date")/g" \
-    -e "s/__DATETIME__/$(sed_escape "$datetime")/g" \
+    -e "s/__DATE__/$(sed_escape "$_CIBUILD_DATE")/g" \
+    -e "s/__DATETIME__/$(sed_escape "$_CIBUILD_DATE_TIME")/g" \
     -e "s/__COMMIT__/$(sed_escape "$_CIBUILD_CI_COMMIT")/g" \
     -e "s/__REF__/$(sed_escape "$_CIBUILD_CI_REF")/g"
 }
@@ -229,6 +227,19 @@ cibuild_ci_release_image_full() {
   printf '%s\n' "$(cibuild_ci_release_registry)/$(cibuild_ci_release_image_path):$(cibuild_ci_build_tag)"
 }
 
+cibuild__ci_get_base_cosign_annotations() {
+  
+  printf -- '-a\norg.opencontainers.image.source=%s\n' "local"
+
+  [ -n "${_CIBUILD_CI_COMMIT:-}" ] && \
+    printf -- '-a\norg.opencontainers.image.revision=%s\n' "${_CIBUILD_CI_COMMIT}"
+
+  [ -n "${_CIBUILD_CI_REF}" ] && \
+    printf -- '-a\norg.opencontainers.image.version=%s\n' \
+      "${_CIBUILD_CI_REF}"
+
+}
+
 cibuild__ci_init() {
 
   cibuild_log_info "init ci: $(cibuild_ci_type)"
@@ -258,19 +269,13 @@ cibuild__ci_init() {
     exit 1
   fi
 
-}
+  if [ -z "$_CIBUILD_DATE" ]; then
+    _CIBUILD_DATE=$(date +%F)
+  fi
 
-cibuild__ci_get_base_cosign_annotations() {
-  
-  printf -- '-a\norg.opencontainers.image.source=%s\n' "local"
-
-  [ -n "${_CIBUILD_CI_COMMIT:-}" ] && \
-    printf -- '-a\norg.opencontainers.image.revision=%s\n' "${_CIBUILD_CI_COMMIT}"
-
-  [ -n "${_CIBUILD_CI_REF}" ] && \
-    printf -- '-a\norg.opencontainers.image.version=%s\n' \
-      "${_CIBUILD_CI_REF}"
-
+  if [ -z "$_CIBUILD_DATE_TIME" ]; then
+     _CIBUILD_DATE_TIME=$(date +%F_%H-%M-%S)
+  fi
 }
 
 cibuild__ci_init

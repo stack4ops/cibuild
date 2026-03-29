@@ -24,17 +24,15 @@ _CIBUILD_DATE_TIME=""
 cibuild_ci_type() { printf '%s\n' "gitlab"; }
 
 cibuild_ci_process_tag() {
-  local tag="$1" \
-        date=${_CIBUILD_DATE:-$(date +%F)} \
-        datetime=${_CIBUILD_DATE_TIME:-$(date +%F_%H-%M-%S)}
+  local tag="$1"
 
   sed_escape() {
     printf '%s' "$1" | sed 's/[&\/]/\\&/g'
   }
   
   printf '%s' "$tag" | sed \
-    -e "s/__DATE__/$(sed_escape "$date")/g" \
-    -e "s/__DATETIME__/$(sed_escape "$datetime")/g" \
+    -e "s/__DATE__/$(sed_escape "$_CIBUILD_DATE")/g" \
+    -e "s/__DATETIME__/$(sed_escape "$_CIBUILD_DATE_TIME")/g" \
     -e "s/__COMMIT__/$(sed_escape "$_CIBUILD_CI_COMMIT")/g" \
     -e "s/__REF__/$(sed_escape "$_CIBUILD_CI_REF")/g"
 }
@@ -239,6 +237,14 @@ cibuild__ci_init() {
 
   # target ref: normal branch or MR target
   _CIBUILD_CI_REF="${CI_COMMIT_REF_NAME:-$CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
+
+  if [ -z "$_CIBUILD_DATE" ]; then
+    _CIBUILD_DATE=$(date +%F)
+  fi
+
+  if [ -z "$_CIBUILD_DATE_TIME" ]; then
+     _CIBUILD_DATE_TIME=$(date +%F_%H-%M-%S)
+  fi
 }
 
 cibuild__ci_init
