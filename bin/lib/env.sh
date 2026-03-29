@@ -57,6 +57,7 @@ release_minor_tag_paging_limit=10000
 release_image_tags=
 release_minor_tag_regex=
 release_signature=0
+release_remove_old_signatures=1
 release_cosign_new_bundle_format=1
 release_keep_platform_images=1
 release_keep_tmp_tag=1

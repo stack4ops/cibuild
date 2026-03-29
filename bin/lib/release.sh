@@ -8,6 +8,7 @@
 [ -n "${_CIBUILD_RELEASE_LOADED-}" ] && return
 _CIBUILD_RELEASE_LOADED=1
 
+cibuild__release_minortag_template=""
 cibuild__release_minortag=""
 cibuild__target_digest=""
 
@@ -31,7 +32,7 @@ cibuild__get_docker_attestation_digest() {
 
 cibuild__release_copy_tag() {
   local copy_to_tag="$1" \
-        target_image=$(cibuild_ci_target_image) \
+        target_image=${2:-$(cibuild_ci_target_image)} \
         build_tag=$(cibuild_ci_build_tag)
   
   if [ -z "${cibuild__target_digest:-}" ]; then
@@ -43,6 +44,85 @@ cibuild__release_copy_tag() {
       return 1
   fi
   return 0
+}
+
+cibuild__get_minor_tag() {
+
+  local release_minor_tag_regex=$(cibuild_env_get 'release_minor_tag_regex') \
+        base_image=$(cibuild_core_base_image) \
+        base_tag=$(cibuild_core_base_tag) \
+        ref \
+        current_digest \
+
+  sed_escape() {
+    printf '%s' "$1" | sed 's/[&\/]/\\&/g'
+  }
+
+  if [ -z "${cibuild__release_minortag_template:-}" ]; then
+    cibuild_log_debug "no additional __MINORTAG__ defined. skipping get_minor_tag"
+    return 0
+  fi
+
+  if [ -z "${release_minor_tag_regex:-}" ]; then
+    cibuild_log_debug "no minor tag regex defined. skipping get_minor_tag"
+    return 0
+  fi
+  
+  ref="${base_image}:${base_tag}"
+  
+  # retrieve digest for base_tag
+  if ! current_digest=$(regctl -v error image digest "$ref"); then
+    cibuild_log_err "failed to get digest for $ref"
+    return 1
+  fi
+
+  cibuild_log_debug "current_digest: $current_digest"
+  cibuild_log_debug "minor_tag_regex: ${release_minor_tag_regex}"
+
+  # get tags, filter, reverse sorting
+  local limit=$(cibuild_env_get 'release_minor_tag_paging_limit') \
+        last="" \
+        seen_last="" \
+        all_tags=""
+  while :; do
+    local tags="$(regctl -v error tag ls "${base_image}" --limit "$limit" ${last:+--last "$last"})"
+
+    # no more tags available
+    [ -z "$tags" ] && break
+
+    all_tags="$all_tags\n$tags"
+    # store last tag
+    last="$(echo "$tags" | tail -n 1)"
+    cibuild_log_dump "paging starting from $last"
+    # no endless loop
+    if [ "$last" = "$seen_last" ]; then
+      cibuild_log_info "paging stalled at tag: $last" >&2
+      break
+    fi
+    seen_last="$last"
+  done 
+  
+  tags="$(printf "%b\n" "$all_tags" | sort -V -r | grep -E "$release_minor_tag_regex")"
+  local mt
+  for mt in $tags; do
+    if ! tag_digest=$(regctl -v error image digest "${base_image}:${mt}"); then
+      cibuild_log_err "failed to get digest for ${base_image}:${mt}"
+      continue
+    fi
+
+    cibuild_log_debug "$tag_digest - $mt"
+
+    if [ "$tag_digest" = "$current_digest" ]; then
+      cibuild_log_debug "found matching tag for $base_tag = $mt with same digest $current_digest"
+      _mt=$(cibuild_ci_process_tag $cibuild__release_minortag_template)
+      # set global variable
+      cibuild__release_minortag=$(printf '%s' "$_mt" | sed -e "s/__MINORTAG__/$(sed_escape "$mt")/g")
+      return 0
+    fi
+  done
+
+  cibuild_log_err "could not get minor_tag from $base_tag"
+  return 1
 }
 
 cibuild__sign() {
@@ -127,6 +207,25 @@ cibuild__remove_signatures() {
   sig_tag=$(echo "${index_digest}" | sed 's/:/-/')".sig"
   regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
 
+  if [ "${cibuild_release_cosign_new_bundle_format}" = "1" ]; then
+    cibuild_log_debug "try to remove dsse referrers for ${target_image}@${index_digest}"
+
+    regctl -v error artifact list "$target_image@$index_digest" \
+    --format '{{range .Descriptors}}{{.Digest}}{{"\n"}}{{end}}' 2>/dev/null \
+      | while read -r ref_digest; do
+          [ -z "$ref_digest" ] && continue
+          bundle_content=$(regctl -v error manifest get "${target_image}@${ref_digest}" \
+          --format '{{ index .Annotations "dev.sigstore.bundle.content" }}' 2>/dev/null)
+          cibuild_log_debug "found ${bundle_content}"
+          if [ "${bundle_content}" = "dsse-envelope" ]; then
+            index_tag=$(echo "${index_digest}" | sed 's/:/-/')
+            cibuild_log_debug "delete cosign fallback tag: ${target_image}:${index_tag} if exists"
+            regctl -v error tag delete "${target_image}:${index_tag}" 2>/dev/null || true
+            cibuild_log_debug "delete dsse manifest: ${target_image}@${ref_digest} if exists"
+            regctl -v error manifest delete "${target_image}@${ref_digest}" 2>/dev/null || true
+          fi
+        done
+  fi
 }
 
 cibuild__release_create_index() {
@@ -141,6 +240,7 @@ cibuild__release_create_index() {
         attestation_digest \
         image_digest \
         release_signature=$(cibuild_env_get 'release_signature') \
+        release_remove_old_signatures=$(cibuild_env_get 'release_remove_old_signatures') \
         release_keep_platform_images=$(cibuild_env_get 'release_keep_platform_images') \
         release_keep_tmp_tag=$(cibuild_env_get 'release_keep_tmp_tag')
 
@@ -216,7 +316,9 @@ cibuild__release_create_index() {
   fi
 
   if [ "${release_signature:-0}" = "1" ]; then
-    cibuild__remove_signatures ${target_image} ${cibuild__target_digest}
+    if [ "${release_remove_old_signatures:-1}" = "1" ]; then
+      cibuild__remove_signatures ${target_image} ${cibuild__target_digest}
+    fi
     cibuild__sign "${target_image}@${cibuild__target_digest}"
   fi
 
@@ -240,8 +342,9 @@ cibuild__release_create_index() {
 }
 
 cibuild__release_image_tags() {
+  local reg=$1
+  local release_image_tags=${2:-$(cibuild_env_get 'release_image_tags')}
   local build_tag=$(cibuild_ci_build_tag)
-  local release_image_tags=$(cibuild_env_get 'release_image_tags')
   local tag
 
   IFS=',;'
@@ -251,13 +354,13 @@ cibuild__release_image_tags() {
   for tag; do
     case "$tag" in
       *__MINORTAG__*)
-      cibuild__release_minortag="$tag"
+      cibuild__release_minortag_template="$tag"
       continue
       ;;
       *)
       local processed_tag=$(cibuild_ci_process_tag "$tag")
       cibuild_log_debug "adding addtional tag $processed_tag"
-      if ! cibuild__release_copy_tag "$processed_tag"; then
+      if ! cibuild__release_copy_tag "$processed_tag" "$reg"; then
         cibuild_log_err "error assigning additional tag $processed_tag"
         continue
       fi
@@ -268,87 +371,19 @@ cibuild__release_image_tags() {
 }
 
 cibuild__release_minor_tag() {
-
-  local release_minor_tag_regex=$(cibuild_env_get 'release_minor_tag_regex') \
-        base_image=$(cibuild_core_base_image) \
-        base_tag=$(cibuild_core_base_tag) \
-        ref \
-        current_digest \
-
-  sed_escape() {
-    printf '%s' "$1" | sed 's/[&\/]/\\&/g'
-  }
-
-  if [ -z "${cibuild__release_minortag:-}" ]; then
-    cibuild_log_debug "no additional __MINORTAG__ defined. skipping get_minor_tag"
-    return 0
+  local reg=$1
+  if [ -z "${cibuild__release_minortag}" ]; then
+    if ! cibuild__get_minor_tag; then
+      cibuild_log_err "error getting minortag"
+      return 1
+    fi
   fi
-
-  if [ -z "${release_minor_tag_regex:-}" ]; then
-    cibuild_log_debug "no minor tag regex defined. skipping get_minor_tag"
-    return 0
-  fi
-  
-  ref="${base_image}:${base_tag}"
-  
-  # retrieve digest for base_tag
-  if ! current_digest=$(regctl -v error image digest "$ref"); then
-    cibuild_log_err "failed to get digest for $ref"
+  if ! cibuild__release_copy_tag "$cibuild__release_minortag" "${reg}"; then
     return 1
+  else
+    cibuild_log_debug "adding addtional tag ${cibuild__release_minortag}"
+    return 0
   fi
-
-  cibuild_log_debug "current_digest: $current_digest"
-  cibuild_log_debug "minor_tag_regex: ${release_minor_tag_regex}"
-
-  # get tags, filter, reverse sorting
-  local limit=$(cibuild_env_get 'release_minor_tag_paging_limit') \
-        last="" \
-        seen_last="" \
-        all_tags=""
-  while :; do
-    local tags="$(regctl -v error tag ls "${base_image}" --limit "$limit" ${last:+--last "$last"})"
-
-    # no more tags available
-    [ -z "$tags" ] && break
-
-    all_tags="$all_tags\n$tags"
-    # store last tag
-    last="$(echo "$tags" | tail -n 1)"
-    cibuild_log_dump "paging starting from $last"
-    # no endless loop
-    if [ "$last" = "$seen_last" ]; then
-      cibuild_log_info "paging stalled at tag: $last" >&2
-      break
-    fi
-    seen_last="$last"
-  done 
-  
-  tags="$(printf "%b\n" "$all_tags" | sort -V -r | grep -E "$release_minor_tag_regex")"
-  
-  local mnt
-  for mt in $tags; do
-    if ! tag_digest=$(regctl -v error image digest "${base_image}:${mt}"); then
-      cibuild_log_err "failed to get digest for ${base_image}:${mt}"
-      continue
-    fi
-
-    cibuild_log_debug "$tag_digest - $mt"
-
-    if [ "$tag_digest" = "$current_digest" ]; then
-      cibuild_log_debug "found matching tag for $base_tag = $mt with same digest $current_digest"
-      local processed_mt=$(cibuild_ci_process_tag $cibuild__release_minortag)
-      processed_mt=$(printf '%s' "$processed_mt" | sed -e "s/__MINORTAG__/$(sed_escape "$mt")/g")
-      cibuild_log_debug "adding minor tag $processed_mt"
-      if ! cibuild__release_copy_tag "$processed_mt"; then
-        return 1
-      else
-        return 0
-      fi
-    fi
-  done
-
-  cibuild_log_err "could not get minor_tag from $base_tag"
-  return 1
 }
 
 cibuild__release_create_regctl_auth_config() {
@@ -400,7 +435,7 @@ cibuild__release_create_regctl_auth_config() {
 cibuild__mirror_registry_get_var() {
   local reg="$1"
   local key="$2"
-  prefix="CIBUILD_MIRROR_REGISTRY"
+  prefix="CIBUILD_RELEASE_MIRROR_REGISTRY"
   if [ -n "$key" ]; then
     env | grep "^${prefix}_${reg}_${key}=" | cut -d'=' -f2-
   else
@@ -408,22 +443,30 @@ cibuild__mirror_registry_get_var() {
   fi
 }
 
-cibuild__release_registry() {
+cibuild__release_mirrors() {
   local build_tag=$(cibuild_ci_build_tag) \
         target_image=$(cibuild_ci_target_image) \
         target_image_path=$(cibuild_ci_target_image_path)
 
-  registries=$(env | grep -E '^CIBUILD_MIRROR_REGISTRY_[A-Z]+=' | sed 's/^CIBUILD_MIRROR_REGISTRY_//' | sed 's/=.*//')
+  registries=$(env | grep -E '^CIBUILD_RELEASE_MIRROR_REGISTRY_[A-Z]+=' | sed 's/^CIBUILD_RELEASE_MIRROR_REGISTRY_//' | sed 's/=.*//')
   
   for registry in $registries; do
     cibuild_log_debug "get keys for mirror ${registry}"
     local reg=$(cibuild__mirror_registry_get_var "${registry}") \
-          user=$(cibuild__mirror_registry_get_var "${registry}" "USER") \
-          pass=$(cibuild__mirror_registry_get_var "${registry}" "PASS") \
-          _image_path=$(cibuild__mirror_registry_get_var "${registry}" "IMAGE_PATH") \
-          keep_build_tag=$(cibuild__mirror_registry_get_var "${registry}" "KEEP_BUILD_TAG") \
-          keep_image_tags=$(cibuild__mirror_registry_get_var "${registry}" "KEEP_IMAGE_TAGS") \
-          image_tags=$(cibuild__mirror_registry_get_var "${registry}" "IMAGE_TAGS") \
+      user=$(cibuild__mirror_registry_get_var "${registry}" "USER") \
+      pass=$(cibuild__mirror_registry_get_var "${registry}" "PASS") \
+      _image_path=$(cibuild__mirror_registry_get_var "${registry}" "IMAGE_PATH") \
+      _keep_build_tag=$(cibuild__mirror_registry_get_var "${registry}" "KEEP_BUILD_TAG") \
+      _keep_image_tags=$(cibuild__mirror_registry_get_var "${registry}" "KEEP_IMAGE_TAGS") \
+      image_tags=$(cibuild__mirror_registry_get_var "${registry}" "IMAGE_TAGS")
+
+    keep_build_tag=${_keep_build_tag:-1}
+    keep_image_tags=${_keep_image_tags:-1}
+
+    if [ "${keep_build_tag}" = "0" ] && [ "${keep_image_tags}" = "0" ] && [ -z "${image_tags:-}" ] ; then
+      cibuild_log_err "can not get tags for mirror, set at least KEEP_BUILD_TAG=1, KEEP_IMAGE_TAGS=1 or custom IMAGE_TAGS"
+      return 1
+    fi
 
     # login
     if [ -f "${HOME}/.regctl/config.json" ]; then
@@ -436,14 +479,26 @@ cibuild__release_registry() {
       regctl registry config
     fi
 
-    image_path=${_image_path:-$target_image_path}
+    local image_path=${_image_path:-$target_image_path}
+    local mirror_image="${reg}/${image_path}"
+
+    if ! regctl -v error image copy --referrers --digest-tags ${target_image}@${cibuild__target_digest} ${mirror_image}@${cibuild__target_digest} >/dev/null 2>&1; then
+      cibuild_log_err "failed to set tag ${target_image}:@${cibuild__target_digest} for ${mirror_image}@${cibuild__target_digest}"
+      return 1
+    fi
 
     if [ "${keep_build_tag:-1}" = "1" ]; then
-      if ! regctl -v error image copy --referrers --digest-tags ${target_image}:${build_tag} ${reg}/${image_path}:${build_tag} >/dev/null 2>&1; then
-        cibuild_log_err "failed to set tag ${target_image}:${build_tag} for ${reg}/${image_path}:${build_tag}"
+      if ! regctl -v error image copy ${mirror_image}:@${cibuild__target_digest} ${mirror_image}:${build_tag} >/dev/null 2>&1; then
+        cibuild_log_err "failed to set tag ${mirror_image}:@${cibuild__target_digest} for ${mirror_image}:${build_tag}"
         return 1
       fi
     fi
+    if [ "${keep_image_tags:-1}" = "1" ]; then
+      cibuild__release_image_tags "${mirror_image}"
+    else
+      cibuild__release_image_tags "${mirror_image}" "${image_tags}"
+    fi
+    cibuild__release_minor_tag "${mirror_image}"
   done
 
   #regctl registry config
@@ -487,11 +542,15 @@ cibuild_release_run() {
       fi
     fi
   fi
-  
+
   cibuild__release_create_index
+  
+  # target reg
   cibuild__release_image_tags
   cibuild__release_minor_tag
-  cibuild__release_registry
+  
+  # mirror regs
+  cibuild__release_mirrors
 
   if ! cibuild_core_run_script release post; then
     exit 1
