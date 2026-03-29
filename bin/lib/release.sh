@@ -126,6 +126,85 @@ cibuild__get_minor_tag() {
 }
 
 cibuild__sign() {
+  local image="$1"
+  local cosign_mode=$(cibuild_env_get 'release_cosign_mode')
+  local max_sign_retries=3
+  local sign_try=1
+  local sign_success=0
+  local max_verify_wait=30
+  local verify_interval=3
+  local waited=0
+  local new_bundle_format=""
+  local sign_args=""
+  local verify_args=""
+
+  cibuild_log_debug "signing $image mode=${cosign_mode:-key}"
+
+  . "${CIBUILD_LIB_PATH}/cosign_annotations.sh"
+
+  export COSIGN_PASSWORD=""
+
+  case "${cosign_mode:-key}" in
+    key)
+      curl -sf https://raw.githubusercontent.com/sigstore/root-signing/refs/heads/main/targets/signing_config.v0.2.json \
+        | jq 'del(.rekorTlogUrls)' \
+        > /tmp/cosign-signing-config-no-tlog.json \
+        || { cibuild_log_err "failed to fetch signing config"; return 1; }
+      sign_args="--key /tmp/cosign.key --signing-config /tmp/cosign-signing-config-no-tlog.json"
+      verify_args="--key /tmp/cosign.pub --insecure-ignore-tlog=true"
+      ;;
+    key-tlog)
+      sign_args="--key /tmp/cosign.key"
+      verify_args="--key /tmp/cosign.pub"
+      ;;
+    keyless)
+      if [ -z "${COSIGN_CERTIFICATE_IDENTITY:-}" ] || [ -z "${COSIGN_CERTIFICATE_OIDC_ISSUER:-}" ]; then
+        cibuild_log_err "keyless mode requires COSIGN_CERTIFICATE_IDENTITY and COSIGN_CERTIFICATE_OIDC_ISSUER"
+        return 1
+      fi
+      sign_args=""
+      verify_args="--certificate-identity=${COSIGN_CERTIFICATE_IDENTITY} --certificate-oidc-issuer=${COSIGN_CERTIFICATE_OIDC_ISSUER}"
+      new_bundle_format=""
+      ;;
+    *)
+      cibuild_log_err "unknown cosign mode: ${cosign_mode}"
+      return 1
+      ;;
+  esac
+
+  set -x
+  while [ "$sign_try" -le "$max_sign_retries" ]; do
+    if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
+      sign_success=1
+      break
+    fi
+    cibuild_log_debug "cosign sign failed (attempt ${sign_try}/${max_sign_retries})"
+    sign_try=$((sign_try + 1))
+    sleep 3
+  done
+  set +x
+  if [ "$sign_success" -ne 1 ]; then
+    cibuild_log_err "cosign signing failed after ${max_sign_retries} attempts"
+    return 1
+  fi
+
+  cibuild_log_debug "cosign verify $verify_args ${image}"
+
+  while true; do
+    if cosign verify $verify_args "${image}" >/dev/null 2>&1; then
+      cibuild_log_info "cosign verified after ${waited}s"
+      break
+    fi
+    if [ "$waited" -ge "$max_verify_wait" ]; then
+      cibuild_log_err "signature not available after ${max_verify_wait}s"
+      return 1
+    fi
+    sleep "$verify_interval"
+    waited=$((waited + verify_interval))
+  done
+}
+
+cibuild__sign_old() {
   
   local image=$1
 
