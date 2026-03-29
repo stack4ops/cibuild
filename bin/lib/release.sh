@@ -166,6 +166,10 @@ cibuild__sign() {
   local max_verify_wait=30
   local verify_interval=3
   local waited=0
+  
+  sleep 5
+  ls -la /tmp
+  cosign verify --key /tmp/cosign.pub "${image}"
 
   while true; do
     if cosign verify --key /tmp/cosign.pub "${image}" >/dev/null 2>&1; then
