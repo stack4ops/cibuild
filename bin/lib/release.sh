@@ -168,7 +168,7 @@ cibuild__sign() {
   local waited=0
 
   while true; do
-    if cosign verify --key /tmp/cosign.pub "${target_image}@${cibuild__target_digest}" >/dev/null 2>&1; then
+    if cosign verify --key /tmp/cosign.pub "${image}" >/dev/null 2>&1; then
       cibuild_log_info "verified after $waited sec"
       break
     fi
