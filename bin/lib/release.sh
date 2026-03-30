@@ -143,39 +143,11 @@ cibuild__sign() {
 
   export COSIGN_PASSWORD=""
 
-  sign_args="--key /tmp/cosign.key --signing-config /tmp/cosign.json"
-  verify_args="--key /tmp/cosign.pub --private-infrastructure=true --check-claims=false"
-  # case "${cosign_mode:-key}" in
-  #   key)
-  #     # curl -sf https://raw.githubusercontent.com/sigstore/root-signing/refs/heads/main/targets/signing_config.v0.2.json \
-  #     #   | jq 'del(.rekorTlogUrls)' \
-  #     #   > /tmp/cosign-signing-config-no-tlog.json \
-  #     #   || { cibuild_log_err "failed to fetch signing config"; return 1; }
-  #     # sign_args="--key /tmp/cosign.key --signing-config /tmp/cosign-signing-config-no-tlog.json"
-  #     # verify_args="--key /tmp/cosign.pub --insecure-ignore-tlog=true --private-infrastructure=true"
-  #     sign_args="--key /tmp/cosign.key"
-  #     verify_args="--key /tmp/cosign.pub"
-  #     ;;
-  #   key-tlog)
-  #     sign_args="--key /tmp/cosign.key"
-  #     verify_args="--key /tmp/cosign.pub"
-  #     ;;
-  #   keyless)
-  #     if [ -z "${COSIGN_CERTIFICATE_IDENTITY:-}" ] || [ -z "${COSIGN_CERTIFICATE_OIDC_ISSUER:-}" ]; then
-  #       cibuild_log_err "keyless mode requires COSIGN_CERTIFICATE_IDENTITY and COSIGN_CERTIFICATE_OIDC_ISSUER"
-  #       return 1
-  #     fi
-  #     sign_args=""
-  #     verify_args="--certificate-identity=${COSIGN_CERTIFICATE_IDENTITY} --certificate-oidc-issuer=${COSIGN_CERTIFICATE_OIDC_ISSUER}"
-  #     ;;
-  #   *)
-  #     cibuild_log_err "unknown cosign mode: ${cosign_mode}"
-  #     return 1
-  #     ;;
-  # esac
-  # set -x
+  sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json"
+  verify_args="--key=/tmp/cosign.pub --private-infrastructure=true --check-claims=false"
+  
   while [ "$sign_try" -le "$max_sign_retries" ]; do
-    if cosign sign --yes $sign_args "$@" "${image}"; then
+    if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
       sign_success=1
       break
     fi
@@ -543,6 +515,8 @@ cibuild_release_run() {
   if ! cibuild_core_run_script release pre; then
     exit 1
   fi
+  
+  echo "$release_cosign_private_key"
 
   if [ "${release_signature:-0}" = "1" ]; then
     # first check private key
