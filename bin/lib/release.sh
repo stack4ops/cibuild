@@ -136,6 +136,7 @@ cibuild__sign() {
   local waited=0
   local sign_args=""
   local verify_args=""
+  local release_verify_signatures=$(cibuild_env_get 'release_verify_signatures')
 
   cibuild_log_debug "signing $image mode=${cosign_mode:-key}"
 
@@ -163,20 +164,21 @@ cibuild__sign() {
 
   cibuild_log_debug "cosign verify $verify_args ${image}"
 
-  
-  while true; do
-    #if cosign verify $verify_args "${image}" >/dev/null 2>&1; then
-    if cosign verify $verify_args "${image}"; then
-      cibuild_log_info "cosign verified after ${waited}s"
-      break
-    fi
-    if [ "$waited" -ge "$max_verify_wait" ]; then
-      cibuild_log_err "signature not available after ${max_verify_wait}s"
-      return 1
-    fi
-    sleep "$verify_interval"
-    waited=$((waited + verify_interval))
-  done
+  if [ "${release_verify_signatures}" = "1" ]; then
+    while true; do
+      #if cosign verify $verify_args "${image}" >/dev/null 2>&1; then
+      if cosign verify $verify_args "${image}"; then
+        cibuild_log_info "cosign verified after ${waited}s"
+        break
+      fi
+      if [ "$waited" -ge "$max_verify_wait" ]; then
+        cibuild_log_err "signature not available after ${max_verify_wait}s"
+        return 1
+      fi
+      sleep "$verify_interval"
+      waited=$((waited + verify_interval))
+    done
+  fi
   #set +x
 }
 
