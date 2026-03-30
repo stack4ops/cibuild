@@ -173,7 +173,7 @@ cibuild__sign() {
   #     return 1
   #     ;;
   # esac
-  set -x
+  # set -x
   while [ "$sign_try" -le "$max_sign_retries" ]; do
     if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
       sign_success=1
@@ -205,7 +205,7 @@ cibuild__sign() {
     sleep "$verify_interval"
     waited=$((waited + verify_interval))
   done
-  set +x
+  #set +x
 }
 
 cibuild__remove_signatures() {
