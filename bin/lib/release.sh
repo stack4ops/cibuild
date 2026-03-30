@@ -143,33 +143,37 @@ cibuild__sign() {
 
   export COSIGN_PASSWORD=""
 
-  case "${cosign_mode:-key}" in
-    key)
-      curl -sf https://raw.githubusercontent.com/sigstore/root-signing/refs/heads/main/targets/signing_config.v0.2.json \
-        | jq 'del(.rekorTlogUrls)' \
-        > /tmp/cosign-signing-config-no-tlog.json \
-        || { cibuild_log_err "failed to fetch signing config"; return 1; }
-      sign_args="--key /tmp/cosign.key --signing-config /tmp/cosign-signing-config-no-tlog.json"
-      verify_args="--key /tmp/cosign.pub --insecure-ignore-tlog=true"
-      ;;
-    key-tlog)
-      sign_args="--key /tmp/cosign.key"
-      verify_args="--key /tmp/cosign.pub"
-      ;;
-    keyless)
-      if [ -z "${COSIGN_CERTIFICATE_IDENTITY:-}" ] || [ -z "${COSIGN_CERTIFICATE_OIDC_ISSUER:-}" ]; then
-        cibuild_log_err "keyless mode requires COSIGN_CERTIFICATE_IDENTITY and COSIGN_CERTIFICATE_OIDC_ISSUER"
-        return 1
-      fi
-      sign_args=""
-      verify_args="--certificate-identity=${COSIGN_CERTIFICATE_IDENTITY} --certificate-oidc-issuer=${COSIGN_CERTIFICATE_OIDC_ISSUER}"
-      ;;
-    *)
-      cibuild_log_err "unknown cosign mode: ${cosign_mode}"
-      return 1
-      ;;
-  esac
-
+  sign_args="--key /tmp/cosign.key --signing-config /tmp/cosign.json"
+  verify_args="--key /tmp/cosign.pub --private-infrastructure=true"
+  # case "${cosign_mode:-key}" in
+  #   key)
+  #     # curl -sf https://raw.githubusercontent.com/sigstore/root-signing/refs/heads/main/targets/signing_config.v0.2.json \
+  #     #   | jq 'del(.rekorTlogUrls)' \
+  #     #   > /tmp/cosign-signing-config-no-tlog.json \
+  #     #   || { cibuild_log_err "failed to fetch signing config"; return 1; }
+  #     # sign_args="--key /tmp/cosign.key --signing-config /tmp/cosign-signing-config-no-tlog.json"
+  #     # verify_args="--key /tmp/cosign.pub --insecure-ignore-tlog=true --private-infrastructure=true"
+  #     sign_args="--key /tmp/cosign.key"
+  #     verify_args="--key /tmp/cosign.pub"
+  #     ;;
+  #   key-tlog)
+  #     sign_args="--key /tmp/cosign.key"
+  #     verify_args="--key /tmp/cosign.pub"
+  #     ;;
+  #   keyless)
+  #     if [ -z "${COSIGN_CERTIFICATE_IDENTITY:-}" ] || [ -z "${COSIGN_CERTIFICATE_OIDC_ISSUER:-}" ]; then
+  #       cibuild_log_err "keyless mode requires COSIGN_CERTIFICATE_IDENTITY and COSIGN_CERTIFICATE_OIDC_ISSUER"
+  #       return 1
+  #     fi
+  #     sign_args=""
+  #     verify_args="--certificate-identity=${COSIGN_CERTIFICATE_IDENTITY} --certificate-oidc-issuer=${COSIGN_CERTIFICATE_OIDC_ISSUER}"
+  #     ;;
+  #   *)
+  #     cibuild_log_err "unknown cosign mode: ${cosign_mode}"
+  #     return 1
+  #     ;;
+  # esac
+  set -x
   while [ "$sign_try" -le "$max_sign_retries" ]; do
     if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
       sign_success=1
@@ -187,7 +191,7 @@ cibuild__sign() {
 
   cibuild_log_debug "cosign verify $verify_args ${image}"
 
-  set -x
+  
   while true; do
     #if cosign verify $verify_args "${image}" >/dev/null 2>&1; then
     if cosign verify $verify_args "${image}"; then
@@ -558,6 +562,27 @@ cibuild_release_run() {
       else
         cibuild_main_err "cosign.pub not exists"
         exit 1
+      fi
+    fi
+    # first check env for cosign config
+    if [ -n "${release_cosign_config:-}" ]; then
+      printf '%s\n' "$release_cosign_config" | base64 -d > /tmp/cosign.json
+    else
+      # check repo cosign.json
+      if [ -f "cosign.json" ]; then
+        cp cosign.json /tmp/cosign.json
+      else
+        # generate empty cosign.json
+        cibuild_log_info "create empty cosign.json"
+        if ! cosign signing-config create \
+          --no-default-rekor \
+          --no-default-fulcio \
+          --no-default-oidc \
+          --no-default-tsa \
+          --out /tmp/cosign.json; then
+          cibuild_main_err "could not create cosign.json"
+          exit 1
+        fi
       fi
     fi
   fi
