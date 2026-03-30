@@ -189,20 +189,19 @@ cibuild__remove_signatures() {
 
   cibuild_log_debug "remove signatures from ${target_image}@${index_digest}"
   
-  # platforms=$(echo "$build_platforms" | tr ',' ' ')
+  platforms=$(echo "$build_platforms" | tr ',' ' ')
 
-  # # always try to delete old .sig tags (also cleanup old *.sig tags if switched to new bundle format)
-  # for platform in $platforms; do
-  #     platform_name=$(echo "$platform" | tr '/' '-')
-  #     image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag})
-  #     sig_tag=$(echo "$image_digest" | sed 's/:/-/')".sig"
-  #     regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
-  # done
+  # always try to delete old .sig tags (also cleanup old *.sig tags if switched to new bundle format)
+  for platform in $platforms; do
+      platform_name=$(echo "$platform" | tr '/' '-')
+      image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag})
+      sig_tag=$(echo "$image_digest" | sed 's/:/-/')".sig"
+      regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
+  done
 
-  # # index sig
-  # sig_tag=$(echo "${index_digest}" | sed 's/:/-/')".sig"
-  # regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
-
+  # index sig
+  sig_tag=$(echo "${index_digest}" | sed 's/:/-/')".sig"
+  regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
   
   cibuild_log_debug "try to remove dsse referrers for ${target_image}@${index_digest}"
 
