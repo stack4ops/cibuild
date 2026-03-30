@@ -134,7 +134,6 @@ cibuild__sign() {
   local max_verify_wait=30
   local verify_interval=3
   local waited=0
-  local new_bundle_format=""
   local sign_args=""
   local verify_args=""
 
@@ -164,7 +163,6 @@ cibuild__sign() {
       fi
       sign_args=""
       verify_args="--certificate-identity=${COSIGN_CERTIFICATE_IDENTITY} --certificate-oidc-issuer=${COSIGN_CERTIFICATE_OIDC_ISSUER}"
-      new_bundle_format=""
       ;;
     *)
       cibuild_log_err "unknown cosign mode: ${cosign_mode}"
@@ -204,111 +202,47 @@ cibuild__sign() {
   done
 }
 
-cibuild__sign_old() {
-  
-  local image=$1
-
-  local cibuild_release_cosign_new_bundle_format=$(cibuild_env_get 'release_cosign_new_bundle_format')
-
-  cibuild_log_debug "signing $image"
-
-  . "${CIBUILD_LIB_PATH}/cosign_annotations.sh"
-
-  export COSIGN_PASSWORD=""
-
-  local max_sign_retries=3
-  local sign_try=1
-  local sign_success=0
-  local new_bundle_format=""
-
-  if [ "${cibuild_release_cosign_new_bundle_format}" = "0" ]; then
-    new_bundle_format="--new-bundle-format=false --use-signing-config=false"
-  fi
-
-  cibuild_log_debug "cosign sign --yes $new_bundle_format $@ --recursive --key /tmp/cosign.key ${image}"
-  
-  while [ $sign_try -le $max_sign_retries ]; do
-    if cosign sign --yes $new_bundle_format "$@" --recursive --key /tmp/cosign.key "${image}"; then
-      sign_success=1
-      break
-    fi
-
-    cibuild_log_debug "cosign sign failed (attempt ${sign_try}/${max_sign_retries})"
-    sign_try=$((sign_try+1))
-    sleep 3
-  done
-
-  if [ "$sign_success" -ne 1 ]; then
-    cibuild_log_err "ERROR: cosign signing failed after ${max_sign_retries} attempts"
-  fi
-
-  local max_verify_wait=30
-  local verify_interval=3
-  local waited=0
-  
-  sleep 5
-  ls -la /tmp
-  cosign verify --key /tmp/cosign.pub "${image}"
-
-  while true; do
-    if cosign verify --key /tmp/cosign.pub "${image}" >/dev/null 2>&1; then
-      cibuild_log_info "verified after $waited sec"
-      break
-    fi
-
-    if [ $waited -ge $max_verify_wait ]; then
-      cibuild_log_err "ERROR: Signature not available after ${max_verify_wait}s"
-      exit 1
-    fi
-
-    sleep $verify_interval
-    waited=$((waited+verify_interval))
-  done
-}
-
 cibuild__remove_signatures() {
   local target_image=$1 \
         index_digest=$2 \
         build_tag=$(cibuild_ci_build_tag) \
         platforms \
-        build_platforms=$(cibuild_env_get 'build_platforms') \
-        cibuild_release_cosign_new_bundle_format=$(cibuild_env_get 'release_cosign_new_bundle_format')
+        build_platforms=$(cibuild_env_get 'build_platforms')
 
   cibuild_log_debug "remove signatures from ${target_image}@${index_digest}"
   
-  platforms=$(echo "$build_platforms" | tr ',' ' ')
+  # platforms=$(echo "$build_platforms" | tr ',' ' ')
 
-  # always try to delete old .sig tags (also cleanup old *.sig tags if switched to new bundle format)
-  for platform in $platforms; do
-      platform_name=$(echo "$platform" | tr '/' '-')
-      image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag})
-      sig_tag=$(echo "$image_digest" | sed 's/:/-/')".sig"
-      regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
-  done
+  # # always try to delete old .sig tags (also cleanup old *.sig tags if switched to new bundle format)
+  # for platform in $platforms; do
+  #     platform_name=$(echo "$platform" | tr '/' '-')
+  #     image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag})
+  #     sig_tag=$(echo "$image_digest" | sed 's/:/-/')".sig"
+  #     regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
+  # done
 
-  # index sig
-  sig_tag=$(echo "${index_digest}" | sed 's/:/-/')".sig"
-  regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
+  # # index sig
+  # sig_tag=$(echo "${index_digest}" | sed 's/:/-/')".sig"
+  # regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
 
-  if [ "${cibuild_release_cosign_new_bundle_format}" = "1" ]; then
-    cibuild_log_debug "try to remove dsse referrers for ${target_image}@${index_digest}"
+  
+  cibuild_log_debug "try to remove dsse referrers for ${target_image}@${index_digest}"
 
-    regctl -v error artifact list "$target_image@$index_digest" \
-    --format '{{range .Descriptors}}{{.Digest}}{{"\n"}}{{end}}' 2>/dev/null \
-      | while read -r ref_digest; do
-          [ -z "$ref_digest" ] && continue
-          bundle_content=$(regctl -v error manifest get "${target_image}@${ref_digest}" \
-          --format '{{ index .Annotations "dev.sigstore.bundle.content" }}' 2>/dev/null)
-          cibuild_log_debug "found ${bundle_content}"
-          if [ "${bundle_content}" = "dsse-envelope" ]; then
-            index_tag=$(echo "${index_digest}" | sed 's/:/-/')
-            cibuild_log_debug "delete cosign fallback tag: ${target_image}:${index_tag} if exists"
-            regctl -v error tag delete "${target_image}:${index_tag}" 2>/dev/null || true
-            cibuild_log_debug "delete dsse manifest: ${target_image}@${ref_digest} if exists"
-            regctl -v error manifest delete "${target_image}@${ref_digest}" 2>/dev/null || true
-          fi
-        done
-  fi
+  regctl -v error artifact list "$target_image@$index_digest" \
+  --format '{{range .Descriptors}}{{.Digest}}{{"\n"}}{{end}}' 2>/dev/null \
+    | while read -r ref_digest; do
+        [ -z "$ref_digest" ] && continue
+        bundle_content=$(regctl -v error manifest get "${target_image}@${ref_digest}" \
+        --format '{{ index .Annotations "dev.sigstore.bundle.content" }}' 2>/dev/null)
+        cibuild_log_debug "found ${bundle_content}"
+        if [ "${bundle_content}" = "dsse-envelope" ]; then
+          index_tag=$(echo "${index_digest}" | sed 's/:/-/')
+          cibuild_log_debug "delete cosign fallback tag: ${target_image}:${index_tag} if exists"
+          regctl -v error tag delete "${target_image}:${index_tag}" 2>/dev/null || true
+          cibuild_log_debug "delete dsse manifest: ${target_image}@${ref_digest} if exists"
+          regctl -v error manifest delete "${target_image}@${ref_digest}" 2>/dev/null || true
+        fi
+      done
 }
 
 cibuild__release_create_index() {
