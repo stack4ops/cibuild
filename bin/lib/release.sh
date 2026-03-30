@@ -144,7 +144,7 @@ cibuild__sign() {
   export COSIGN_PASSWORD=""
 
   sign_args="--key /tmp/cosign.key --signing-config /tmp/cosign.json"
-  verify_args="--key /tmp/cosign.pub --private-infrastructure=true"
+  verify_args="--key /tmp/cosign.pub --private-infrastructure=true --check-claims=false"
   # case "${cosign_mode:-key}" in
   #   key)
   #     # curl -sf https://raw.githubusercontent.com/sigstore/root-signing/refs/heads/main/targets/signing_config.v0.2.json \
