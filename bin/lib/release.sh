@@ -152,7 +152,7 @@ cibuild__sign() {
     verify_args="--key=/tmp/cosign.pub --private-infrastructure=true"
   else
      sign_args="--key=/tmp/cosign.key --use-signing-config=false --new-bundle-format=false"
-     verify_args="--key=/tmp/cosign.pub --private-infrastructure=false"   
+     verify_args="--key=/tmp/cosign.pub --private-infrastructure=true" 
   fi
   
   while [ "$sign_try" -le "$max_sign_retries" ]; do
