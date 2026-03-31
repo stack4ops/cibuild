@@ -184,7 +184,7 @@ cibuild__sign() {
   esac
   set -x
   while [ "$sign_try" -le "$max_sign_retries" ]; do
-    if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
+    if cosign sign --yes $sign_args "$@" "${image}"; then
       sign_success=1
       break
     fi
