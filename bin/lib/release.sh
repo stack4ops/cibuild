@@ -155,8 +155,8 @@ cibuild__sign() {
         sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
         verify_args="--key=/tmp/cosign.pub --private-infrastructure=true --new-bundle-format=true"
       else
-        sign_args="--key=/tmp/cosign.key --new-bundle-format=false --signing-config=/tmp/cosign.json "
-        verify_args="--key=/tmp/cosign.pub --new-bundle-format=false --private-infrastructure=true" 
+        sign_args="--key=/tmp/cosign.key --new-bundle-format=false --signing-config=/tmp/cosign.json"
+        verify_args="--key=/tmp/cosign.pub --new-bundle-format=false --private-infrastructure=true"
       fi
       ;;
     key-tlog)
