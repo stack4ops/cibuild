@@ -155,8 +155,8 @@ cibuild__sign() {
         sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
         verify_args="--key=/tmp/cosign.pub --private-infrastructure=true --new-bundle-format=true"
       else
-        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=false"
-        verify_args="--key=/tmp/cosign.pub --private-infrastructure=true --new-bundle-format=false" 
+        sign_args="--key=/tmp/cosign.key --new-bundle-format=false --signing-config=/tmp/cosign.json "
+        verify_args="--key=/tmp/cosign.pub --new-bundle-format=false --private-infrastructure=true" 
       fi
       ;;
     key-tlog)
@@ -184,7 +184,7 @@ cibuild__sign() {
   esac
   set -x
   while [ "$sign_try" -le "$max_sign_retries" ]; do
-    if cosign sign --yes $sign_args "$@" "${image}"; then
+    if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
       sign_success=1
       break
     fi
