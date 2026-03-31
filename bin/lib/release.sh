@@ -147,13 +147,41 @@ cibuild__sign() {
 
   # new_bundle_format (dsse referrer) not fully supported by all registries
   #  --check-claims=false required?
-  if [ "${cosign_new_bundle_format}" = "1" ]; then
-    sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
-    verify_args="--key=/tmp/cosign.pub --private-infrastructure=true"
-  else
-     sign_args="--key=/tmp/cosign.key --use-signing-config=false --new-bundle-format=false"
-     verify_args="--key=/tmp/cosign.pub --private-infrastructure=true" 
-  fi
+  
+  case "$cosign_mode" in
+    key)
+      cibuild_log_debug "cosign_mode: key"
+      if [ "${cosign_new_bundle_format}" = "1" ]; then
+        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --tlog-upload=false --new-bundle-format=true"
+        verify_args="--key=/tmp/cosign.pub --private-infrastructure=true --new-bundle-format=true"
+      else
+        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --tlog-upload=false --new-bundle-format=false"
+        verify_args="--key=/tmp/cosign.pub --private-infrastructure=true -new-bundle-format=false" 
+      fi
+      ;;
+    key-tlog)
+      cibuild_log_debug "cosign_mode: key-tlog"
+      if [ "${cosign_new_bundle_format}" = "1" ]; then
+        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --tlog-upload=true --new-bundle-format=true"
+        verify_args="--key=/tmp/cosign.pub --new-bundle-format=true"
+      else
+        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --tlog-upload=true --new-bundle-format=false"
+        verify_args="--key=/tmp/cosign.pub -new-bundle-format=false"
+      fi
+      ;;
+    keyless)
+      cibuild_log_debug "cosign_mode: keyless"
+      if [ "${cosign_new_bundle_format}" = "1" ]; then
+        # ToDo
+        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
+        verify_args="--key=/tmp/cosign.pub --private-infrastructure=true"
+      else
+        # ToDo
+        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=false"
+        verify_args="--key=/tmp/cosign.pub --private-infrastructure=true -new-bundle-format=false" 
+      fi
+      ;;
+  esac
   
   while [ "$sign_try" -le "$max_sign_retries" ]; do
     if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
@@ -170,9 +198,8 @@ cibuild__sign() {
     return 1
   fi
 
-  cibuild_log_debug "cosign verify $verify_args ${image}"
-
   if [ "${release_verify_signatures}" = "1" ]; then
+    cibuild_log_debug "cosign verify $verify_args ${image}"
     while true; do
       #if cosign verify $verify_args "${image}" >/dev/null 2>&1; then
       if cosign verify $verify_args "${image}"; then
@@ -187,7 +214,6 @@ cibuild__sign() {
       waited=$((waited + verify_interval))
     done
   fi
-  #set +x
 }
 
 cibuild__remove_signatures() {
