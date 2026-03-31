@@ -156,7 +156,7 @@ cibuild__sign() {
         verify_args="--key=/tmp/cosign.pub --private-infrastructure=true --new-bundle-format=true"
       else
         sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=false"
-        verify_args="--key=/tmp/cosign.pub --private-infrastructure=true -new-bundle-format=false" 
+        verify_args="--key=/tmp/cosign.pub --private-infrastructure=true --new-bundle-format=false" 
       fi
       ;;
     key-tlog)
@@ -182,7 +182,7 @@ cibuild__sign() {
       fi
       ;;
   esac
-  
+  set -x
   while [ "$sign_try" -le "$max_sign_retries" ]; do
     if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
       sign_success=1
@@ -192,7 +192,7 @@ cibuild__sign() {
     sign_try=$((sign_try + 1))
     sleep 3
   done
-
+  set +x
   if [ "$sign_success" -ne 1 ]; then
     cibuild_log_err "cosign signing failed after ${max_sign_retries} attempts"
     return 1
