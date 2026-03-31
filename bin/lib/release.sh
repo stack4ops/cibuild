@@ -58,13 +58,13 @@ cibuild__get_minor_tag() {
     printf '%s' "$1" | sed 's/[&\/]/\\&/g'
   }
 
-  if [ -z "${cibuild__release_minortag_template:-}" ]; then
-    cibuild_log_debug "no additional __MINORTAG__ defined. skipping get_minor_tag"
+  if [ -z "${release_minor_tag_regex:-}" ]; then
+    cibuild_log_debug "no minor tag regex defined. skipping get_minor_tag"
     return 0
   fi
 
-  if [ -z "${release_minor_tag_regex:-}" ]; then
-    cibuild_log_debug "no minor tag regex defined. skipping get_minor_tag"
+  if [ -z "${cibuild__release_minortag_template:-}" ]; then
+    cibuild_log_debug "no additional __MINORTAG__ defined. skipping get_minor_tag"
     return 0
   fi
   
@@ -370,6 +370,13 @@ cibuild__release_image_tags() {
 
 cibuild__release_minor_tag() {
   local reg=$1
+  local release_minor_tag_regex=$(cibuild_env_get 'release_minor_tag_regex')
+
+  if [ -z "${release_minor_tag_regex:-}" ]; then
+    cibuild_log_debug "no minor tag regex defined. skipping release_minor_tag"
+    return 0
+  fi
+
   if [ -z "${cibuild__release_minortag}" ]; then
     if ! cibuild__get_minor_tag; then
       cibuild_log_err "error getting minortag"
