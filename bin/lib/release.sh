@@ -126,17 +126,18 @@ cibuild__get_minor_tag() {
 }
 
 cibuild__sign() {
-  local image="$1"
-  local cosign_mode=$(cibuild_env_get 'release_cosign_mode')
-  local max_sign_retries=3
-  local sign_try=1
-  local sign_success=0
-  local max_verify_wait=30
-  local verify_interval=3
-  local waited=0
-  local sign_args=""
-  local verify_args=""
-  local release_verify_signatures=$(cibuild_env_get 'release_verify_signatures')
+  local image="$1" \
+        cosign_mode=$(cibuild_env_get 'release_cosign_mode') \
+        cosign_new_bundle_format=$(cibuild_env_get 'cosign_new_bundle_format') \
+        max_sign_retries=3 \
+        sign_try=1 \
+        sign_success=0 \
+        max_verify_wait=30 \
+        verify_interval=3 \
+        waited=0 \
+        sign_args="" \
+        verify_args="" \
+        release_verify_signatures=$(cibuild_env_get 'release_verify_signatures')
 
   cibuild_log_debug "signing $image mode=${cosign_mode:-key}"
 
@@ -144,8 +145,15 @@ cibuild__sign() {
 
   export COSIGN_PASSWORD=""
 
-  sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json"
-  verify_args="--key=/tmp/cosign.pub --private-infrastructure=true --check-claims=false"
+  # new_bundle_format (dsse referrer) not fully supported by all registries
+  #  --check-claims=false required?
+  if [ "${cosign_new_bundle_format}" = "1" ]; then
+    sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
+    verify_args="--key=/tmp/cosign.pub --private-infrastructure=true"
+  else
+     sign_args="--key=/tmp/cosign.key --use-signing-config=false --new-bundle-format=false"
+     verify_args="--key=/tmp/cosign.pub --private-infrastructure=false"   
+  fi
   
   while [ "$sign_try" -le "$max_sign_retries" ]; do
     if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
