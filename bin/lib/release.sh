@@ -153,7 +153,7 @@ cibuild__sign() {
       cibuild_log_debug "cosign_mode: key"
       if [ "${cosign_new_bundle_format}" = "1" ]; then
         sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
-        verify_args="--key=/tmp/cosign.pub --private-infrastructure=true --new-bundle-format=true"
+        verify_args="--key=/tmp/cosign.pub --new-bundle-format=true --private-infrastructure=true"
       else
         sign_args="--key=/tmp/cosign.key --new-bundle-format=false --use-signing-config=false --tlog-upload=false"
         verify_args="--key=/tmp/cosign.pub --new-bundle-format=false --private-infrastructure=true"
@@ -163,26 +163,25 @@ cibuild__sign() {
       cibuild_log_debug "cosign_mode: key-tlog"
       if [ "${cosign_new_bundle_format}" = "1" ]; then
         sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
-        verify_args="--key=/tmp/cosign.pub --new-bundle-format=true"
+        verify_args="--key=/tmp/cosign.pub --new-bundle-format=true --private-infrastructure=true"
       else
-        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=false"
-        verify_args="--key=/tmp/cosign.pub -new-bundle-format=false"
+        sign_args="--key=/tmp/cosign.key --new-bundle-format=false --use-signing-config=false --tlog-upload=true"
+        verify_args="--key=/tmp/cosign.pub -new-bundle-format=false --private-infrastructure=true"
       fi
       ;;
     keyless)
       cibuild_log_debug "cosign_mode: keyless"
       if [ "${cosign_new_bundle_format}" = "1" ]; then
         # ToDo
-        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
-        verify_args="--key=/tmp/cosign.pub --private-infrastructure=true"
+        sign_args=""
+        verify_args=""
       else
         # ToDo
-        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=false"
-        verify_args="--key=/tmp/cosign.pub --private-infrastructure=true -new-bundle-format=false" 
+        sign_args=""
+        verify_args=""
       fi
       ;;
   esac
-  set -x
   while [ "$sign_try" -le "$max_sign_retries" ]; do
     if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
       sign_success=1
@@ -192,7 +191,6 @@ cibuild__sign() {
     sign_try=$((sign_try + 1))
     sleep 3
   done
-  set +x
   if [ "$sign_success" -ne 1 ]; then
     cibuild_log_err "cosign signing failed after ${max_sign_retries} attempts"
     return 1
