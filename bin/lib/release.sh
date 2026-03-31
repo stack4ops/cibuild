@@ -152,20 +152,20 @@ cibuild__sign() {
     key)
       cibuild_log_debug "cosign_mode: key"
       if [ "${cosign_new_bundle_format}" = "1" ]; then
-        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --tlog-upload=false --new-bundle-format=true"
+        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
         verify_args="--key=/tmp/cosign.pub --private-infrastructure=true --new-bundle-format=true"
       else
-        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --tlog-upload=false --new-bundle-format=false"
+        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=false"
         verify_args="--key=/tmp/cosign.pub --private-infrastructure=true -new-bundle-format=false" 
       fi
       ;;
     key-tlog)
       cibuild_log_debug "cosign_mode: key-tlog"
       if [ "${cosign_new_bundle_format}" = "1" ]; then
-        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --tlog-upload=true --new-bundle-format=true"
+        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
         verify_args="--key=/tmp/cosign.pub --new-bundle-format=true"
       else
-        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --tlog-upload=true --new-bundle-format=false"
+        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=false"
         verify_args="--key=/tmp/cosign.pub -new-bundle-format=false"
       fi
       ;;
@@ -232,14 +232,12 @@ cibuild__remove_signatures() {
       platform_name=$(echo "$platform" | tr '/' '-')
       image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag})
       sig_tag=$(echo "$image_digest" | sed 's/:/-/')".sig"
-      regctl -v error tag rm "${target_image}:${sig_tag}"
-      #2>/dev/null || true
+      regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
   done
 
   # index sig
   sig_tag=$(echo "${index_digest}" | sed 's/:/-/')".sig"
-  regctl -v error tag rm "${target_image}:${sig_tag}"
-  #2>/dev/null || true
+  regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
   
   cibuild_log_debug "try to remove dsse referrers for ${target_image}@${index_digest}"
 
