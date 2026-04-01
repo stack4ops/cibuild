@@ -163,10 +163,10 @@ cibuild__sign() {
       cibuild_log_debug "cosign_mode: key-tlog"
       if [ "${cosign_new_bundle_format}" = "1" ]; then
         sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
-        verify_args="--key=/tmp/cosign.pub --new-bundle-format=true --private-infrastructure=true"
+        verify_args="--key=/tmp/cosign.pub --new-bundle-format=true"
       else
         sign_args="--key=/tmp/cosign.key --new-bundle-format=false --use-signing-config=false --tlog-upload=true"
-        verify_args="--key=/tmp/cosign.pub -new-bundle-format=false --private-infrastructure=true"
+        verify_args="--key=/tmp/cosign.pub -new-bundle-format=false"
       fi
       ;;
     keyless)
