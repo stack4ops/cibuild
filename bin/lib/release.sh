@@ -144,9 +144,12 @@ cibuild__sign() {
         
   cibuild_log_debug "signing $image mode=${cosign_mode:-key}"
 
+  env | grep ACTIONS
+
   . "${CIBUILD_LIB_PATH}/cosign_annotations.sh"
 
   export COSIGN_PASSWORD=""
+  export COSIGN_NON_INTERACTIVE=1
   
   case "$release_cosign_experimental" in
     "0")
