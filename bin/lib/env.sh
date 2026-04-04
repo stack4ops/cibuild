@@ -58,6 +58,7 @@ release_image_tags=
 release_minor_tag_regex=
 release_cosign_signature=0
 release_cosign_signing_mode=key
+release_cosign_tlog_upload=0
 release_cosign_signing_recursive=0
 release_cosign_experimental=0
 release_cosign_registry_referrers_mode=legacy

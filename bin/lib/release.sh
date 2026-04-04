@@ -128,6 +128,7 @@ cibuild__get_minor_tag() {
 cibuild__sign() {
   local image="$1" \
         release_cosign_signing_mode=$(cibuild_env_get 'release_cosign_signing_mode') \
+        release_cosign_tlog_upload=$(cibuild_env_get 'release_cosign_tlog_upload') \
         release_cosign_verify=$(cibuild_env_get 'release_cosign_verify') \
         release_cosign_experimental=$(cibuild_env_get 'release_cosign_experimental') \
         release_cosign_registry_referrers_mode=$(cibuild_env_get 'release_cosign_registry_referrers_mode') \
@@ -143,8 +144,6 @@ cibuild__sign() {
         verify_args=""
         
   cibuild_log_debug "signing $image mode=${cosign_mode:-key}"
-
-  env | grep ACTIONS
 
   . "${CIBUILD_LIB_PATH}/cosign_annotations.sh"
 
@@ -212,6 +211,12 @@ cibuild__sign() {
     ;;
   esac
 
+  local tlog_upload=""
+
+  if [ "${release_cosign_tlog_upload}" = "1" ] && [ "${release_cosign_signing_mode}" = "keyless" ]; then
+    tlog_upload="--tlog-upload"
+  fi
+
   local recursive=""
 
   if [ "${release_cosign_signing_recursive}" = "1" ]; then
@@ -219,7 +224,7 @@ cibuild__sign() {
   fi
 
   while [ "$sign_try" -le "$max_sign_retries" ]; do
-    if cosign sign --yes $sign_args "$@" ${recursive} "${image}"; then
+    if cosign sign --yes $sign_args "$@" ${recursive} ${tlog_upload} "${image}"; then
       sign_success=1
       break
     fi
