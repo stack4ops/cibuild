@@ -143,7 +143,7 @@ cibuild__sign() {
         sign_args="" \
         verify_args=""
         
-  cibuild_log_debug "signing $image mode=${cosign_mode:-key}"
+  cibuild_log_debug "signing $image mode=${release_cosign_signing_mode}"
 
   . "${CIBUILD_LIB_PATH}/cosign_annotations.sh"
 
@@ -224,7 +224,7 @@ cibuild__sign() {
   fi
 
   while [ "$sign_try" -le "$max_sign_retries" ]; do
-    if cosign sign --yes $sign_args "$@" ${recursive} ${tlog_upload} "${image}"; then
+    if cosign sign --yes --verbose $sign_args "$@" ${recursive} ${tlog_upload} "${image}"; then
       sign_success=1
       break
     fi
