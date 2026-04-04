@@ -240,6 +240,11 @@ cibuild__ci_get_base_cosign_annotations() {
 
 }
 
+cibuild__ci_get_cosign_keyless_verify_args() {
+  cibuild_log_err "keyless signing not supported in loacl adapter"
+  return 1
+}
+
 cibuild__ci_init() {
 
   cibuild_log_info "init ci: $(cibuild_ci_type)"

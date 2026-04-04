@@ -127,8 +127,12 @@ cibuild__get_minor_tag() {
 
 cibuild__sign() {
   local image="$1" \
-        cosign_mode=$(cibuild_env_get 'release_cosign_mode') \
-        cosign_new_bundle_format=$(cibuild_env_get 'cosign_new_bundle_format') \
+        release_cosign_signing_mode=$(cibuild_env_get 'release_cosign_signing_mode') \
+        release_cosign_verify=$(cibuild_env_get 'release_cosign_verify') \
+        release_cosign_experimental=$(cibuild_env_get 'release_cosign_experimental') \
+        release_cosign_registry_referrers_mode=$(cibuild_env_get 'release_cosign_registry_referrers_mode') \
+        release_cosign_signing_recursive=$(cibuild_env_get 'release_cosign_signing_recursive') \
+        release_cosign_signing_config=$(cibuild_env_get 'release_cosign_signing_config') \
         max_sign_retries=3 \
         sign_try=1 \
         sign_success=0 \
@@ -136,54 +140,83 @@ cibuild__sign() {
         verify_interval=3 \
         waited=0 \
         sign_args="" \
-        verify_args="" \
-        release_verify_signatures=$(cibuild_env_get 'release_verify_signatures')
-
+        verify_args=""
+        
   cibuild_log_debug "signing $image mode=${cosign_mode:-key}"
 
   . "${CIBUILD_LIB_PATH}/cosign_annotations.sh"
 
   export COSIGN_PASSWORD=""
-
-  # new_bundle_format (dsse referrer) not fully supported by all registries
-  #  --check-claims=false required?
   
-  case "$cosign_mode" in
-    key)
-      cibuild_log_debug "cosign_mode: key"
-      if [ "${cosign_new_bundle_format}" = "1" ]; then
-        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
-        verify_args="--key=/tmp/cosign.pub --new-bundle-format=true --private-infrastructure=true"
-      else
-        sign_args="--key=/tmp/cosign.key --new-bundle-format=false --use-signing-config=false --tlog-upload=false"
-        verify_args="--key=/tmp/cosign.pub --new-bundle-format=false --private-infrastructure=true"
-      fi
-      ;;
-    key-tlog)
-      cibuild_log_debug "cosign_mode: key-tlog"
-      if [ "${cosign_new_bundle_format}" = "1" ]; then
-        sign_args="--key=/tmp/cosign.key --signing-config=/tmp/cosign.json --new-bundle-format=true"
-        verify_args="--key=/tmp/cosign.pub --new-bundle-format=true"
-      else
-        sign_args="--key=/tmp/cosign.key --new-bundle-format=false --use-signing-config=false --tlog-upload=true"
-        verify_args="--key=/tmp/cosign.pub -new-bundle-format=false"
-      fi
-      ;;
-    keyless)
-      cibuild_log_debug "cosign_mode: keyless"
-      if [ "${cosign_new_bundle_format}" = "1" ]; then
-        # ToDo
-        sign_args=""
-        verify_args=""
-      else
-        # ToDo
-        sign_args=""
-        verify_args=""
-      fi
-      ;;
+  case "$release_cosign_experimental" in
+    "0")
+      export COSIGN_EXPERIMENTAL=0
+    ;;
+    "1")
+      export COSIGN_EXPERIMENTAL=1
+    ;;
+    *)
+      cibuild_log_err "COSIGN_EXPERIMENTAL=$release_cosign_experimental not supported"
+      return 1
+    ;;
+  esac 
+
+  case "$release_cosign_registry_referrers_mode" in
+    "legacy")
+      export COSIGN_REGISTRY_REFERRERS_MODE=legacy
+    ;;
+    "1")
+      export COSIGN_REGISTRY_REFERRERS_MODE=oci-1-1
+    ;;
+    *)
+      cibuild_log_err "COSIGN_EXPERIMENTAL=$release_cosign_experimental not supported"
+      return 1
+    ;;
   esac
+  
+  case "$release_cosign_signing_mode" in
+    "key")
+      if [ -z "${release_cosign_private_key:-}" ]; then
+        cibuild_main_err "CIBUILD_RELEASE_COSIGN_PRIVATE_KEY env var must not be empty"
+        exit 1
+      else
+        printf '%s\n' "$release_cosign_private_key" | base64 -d > /tmp/cosign.key
+      fi
+      # first check env for pub key
+      if [ -n "${release_cosign_public_key:-}" ]; then
+        printf '%s\n' "$release_cosign_public_key" | base64 -d > /tmp/cosign.pub
+      else
+        # check repo cosign.pub
+        if [ -f "cosign.pub" ]; then
+          cp cosign.pub /tmp/cosign.pub
+        else
+          cibuild_main_err "cosign.pub not exists"
+          exit 1
+        fi
+      fi
+      sign_args="--key=/tmp/cosign.key"
+      verify_args="--key=/tmp/cosign.pub"
+    ;;
+    "keyless")
+      sign_args=""
+      if ! verify_args=$(cibuild__ci_get_cosign_keyless_verify_args); then
+        return 1
+      fi
+    ;;
+    *)
+      cibuild_log_err "cosign signing mode $release_cosign_signing_mode not supported"
+      return 1
+    ;;
+  esac
+
+  local recursive=""
+
+  if [ "${release_cosign_signing_recursive}" = "1" ]; then
+    recursive="--recursive"
+  fi
+
   while [ "$sign_try" -le "$max_sign_retries" ]; do
-    if cosign sign --yes $sign_args "$@" --recursive "${image}"; then
+    if cosign sign --yes $sign_args "$@" ${recursive} "${image}"; then
       sign_success=1
       break
     fi
@@ -196,7 +229,7 @@ cibuild__sign() {
     return 1
   fi
 
-  if [ "${release_verify_signatures}" = "1" ]; then
+  if [ "${release_cosign_verify}" = "1" ]; then
     cibuild_log_debug "cosign verify $verify_args ${image}"
     while true; do
       #if cosign verify $verify_args "${image}" >/dev/null 2>&1; then
@@ -267,7 +300,7 @@ cibuild__release_create_index() {
         target_registry=$(cibuild_ci_target_registry) \
         attestation_digest \
         image_digest \
-        release_signature=$(cibuild_env_get 'release_signature') \
+        release_cosign_signature=$(cibuild_env_get 'release_cosign_signature') \
         release_remove_old_signatures=$(cibuild_env_get 'release_remove_old_signatures') \
         release_keep_platform_images=$(cibuild_env_get 'release_keep_platform_images') \
         release_keep_tmp_tag=$(cibuild_env_get 'release_keep_tmp_tag')
@@ -343,7 +376,7 @@ cibuild__release_create_index() {
     cibuild_log_err "failed to set ${target_image}:${build_tag} to ${target_image}@${cibuild__target_digest}"
   fi
 
-  if [ "${release_signature:-0}" = "1" ]; then
+  if [ "${release_cosign_signature:-0}" = "1" ]; then
     if [ "${release_remove_old_signatures:-1}" = "1" ]; then
       cibuild__remove_signatures ${target_image} ${cibuild__target_digest}
     fi
@@ -543,7 +576,7 @@ cibuild__release_mirrors() {
 
 cibuild_release_run() {
   local release_enabled=$(cibuild_env_get 'release_enabled') \
-        release_signature=$(cibuild_env_get 'release_signature') \
+        release_cosign_signature=$(cibuild_env_get 'release_cosign_signature') \
         release_cosign_private_key=$(cibuild_env_get 'release_cosign_private_key') \
         release_cosign_public_key=$(cibuild_env_get 'release_cosign_public_key')
 
@@ -554,51 +587,6 @@ cibuild_release_run() {
 
   if ! cibuild_core_run_script release pre; then
     exit 1
-  fi
-  
-  echo "$release_cosign_private_key"
-
-  if [ "${release_signature:-0}" = "1" ]; then
-    # first check private key
-    if [ -z "${release_cosign_private_key:-}" ]; then
-      cibuild_main_err "CIBUILD_RELEASE_COSIGN_PRIVATE_KEY env var must not be empty"
-      exit 1
-    else
-      printf '%s\n' "$release_cosign_private_key" | base64 -d > /tmp/cosign.key
-    fi
-    # first check env for pub key
-    if [ -n "${release_cosign_public_key:-}" ]; then
-      printf '%s\n' "$release_cosign_public_key" | base64 -d > /tmp/cosign.pub
-    else
-      # check repo cosign.pub
-      if [ -f "cosign.pub" ]; then
-        cp cosign.pub /tmp/cosign.pub
-      else
-        cibuild_main_err "cosign.pub not exists"
-        exit 1
-      fi
-    fi
-    # first check env for cosign config
-    if [ -n "${release_cosign_config:-}" ]; then
-      printf '%s\n' "$release_cosign_config" | base64 -d > /tmp/cosign.json
-    else
-      # check repo cosign.json
-      if [ -f "cosign.json" ]; then
-        cp cosign.json /tmp/cosign.json
-      else
-        # generate empty cosign.json
-        cibuild_log_info "create empty cosign.json"
-        if ! cosign signing-config create \
-          --no-default-rekor \
-          --no-default-fulcio \
-          --no-default-oidc \
-          --no-default-tsa \
-          --out /tmp/cosign.json; then
-          cibuild_main_err "could not create cosign.json"
-          exit 1
-        fi
-      fi
-    fi
   fi
 
   cibuild__release_create_index

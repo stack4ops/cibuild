@@ -231,6 +231,13 @@ cibuild__ci_get_base_cosign_annotations() {
 
 }
 
+cibuild__ci_get_cosign_keyless_verify_args() {
+  printf -- '--certificate-identity=%s/%s\n' \
+    "${GITHUB_SERVER_URL}" \
+    "${GITHUB_WORKFLOW_REF}"
+  printf -- '--certificate-oidc-issuer=https://token.actions.githubusercontent.com\n'
+}
+
 cibuild__ci_init() {
 
   cibuild_log_info "init ci: $(cibuild_ci_type)"

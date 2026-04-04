@@ -229,6 +229,19 @@ cibuild__ci_get_base_cosign_annotations() {
   #  printf -- '-a\norg.opencontainers.image.created=%s\n' "${CI_PIPELINE_CREATED_AT}"
 }
 
+cibuild__ci_get_cosign_keyless_verify_args() {
+  if [ -z "${SIGSTORE_ID_TOKEN:-}" ]; then
+    cibuild_log_err "keyless signing requires SIGSTORE_ID_TOKEN - add id_tokens.SIGSTORE_ID_TOKEN.aud=sigstore to your gitlab-ci.yml"
+    # >&2
+    return 1
+  fi
+  printf -- '--certificate-identity=%s//.gitlab-ci.yml@refs/heads/%s\n' \
+    "${CI_PROJECT_URL}" \
+    "${CI_COMMIT_REF_NAME}"
+  printf -- '--certificate-oidc-issuer=%s\n' \
+    "${CI_SERVER_URL}"
+}
+
 cibuild__ci_init() {
 
   cibuild_log_info "init ci: $(cibuild_ci_type)"
