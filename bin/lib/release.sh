@@ -168,7 +168,7 @@ cibuild__sign() {
     "legacy")
       export COSIGN_REGISTRY_REFERRERS_MODE=legacy
     ;;
-    "1")
+    "oci-1-1")
       export COSIGN_REGISTRY_REFERRERS_MODE=oci-1-1
     ;;
     *)
