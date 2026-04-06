@@ -183,7 +183,6 @@ cibuild__test_detect_kubernetes() {
   echo "$test_service_account" | base64 -d > /tmp/kubeconfig
   export KUBECONFIG=/tmp/kubeconfig
 
-  #if ! timeout 5 kubectl auth can-i get nodes -q >/dev/null 2>&1; then
   if ! timeout 5 kubectl auth can-i create pods -q >/dev/null 2>&1; then
     return 1
   else
@@ -380,7 +379,7 @@ assert_response() {
         platform_name=$(cibuild_core_get_platform_name)
         
   _test_id=$((1000 + RANDOM % 9999))
-  _test_image="${target_image}-${platform_name}:${build_tag}"
+  _test_image="${target_image}:${build_tag}-${platform_name}"
   _container="testrun-${_test_id}"
   _pod="testrun-${_test_id}"
 
@@ -420,7 +419,7 @@ assert_log() {
         platform_name=$(cibuild_core_get_platform_name)
 
   _test_id=$((1000 + RANDOM % 9999))
-  _test_image="${target_image}-${platform_name}:${build_tag}"
+  _test_image="${target_image}:${build_tag}-${platform_name}"
   _container="testrun-${_test_id}"
   _pod="testrun-${_test_id}"
 
@@ -471,7 +470,6 @@ cibuild__test_image() {
     assert)
       cibuild_log_debug "assert"
       tmpfile=$(mktemp /tmp/cibuild_asserts.XXXXXX)
-      #tmpfile="/tmp/cibuild_asserts.$$"
       jq -c '
       .[] |
       {

@@ -15,8 +15,9 @@ cibuild__target_digest=""
 cibuild__get_docker_attestation_digest() {
   local platform_image="$1"
   local build_tag="$2"
+  local platform_name="$3"
 
-  local image="${platform_image}:${build_tag}"
+  local image="${platform_image}:${build_tag}-${platform_name}"
 
   local ref_digest=$(regctl -v error manifest head ${image})
   
@@ -171,7 +172,7 @@ cibuild__sign() {
       export COSIGN_REGISTRY_REFERRERS_MODE=oci-1-1
     ;;
     *)
-      cibuild_log_err "COSIGN_EXPERIMENTAL=$release_cosign_experimental not supported"
+      cibuild_log_err "COSIGN_REGISTRY_REFERRERS_MODE=$release_cosign_registry_referrers_mode not supported"
       return 1
     ;;
   esac
@@ -224,7 +225,7 @@ cibuild__sign() {
   fi
 
   while [ "$sign_try" -le "$max_sign_retries" ]; do
-    if cosign sign --yes --verbose $sign_args "$@" ${recursive} ${tlog_upload} "${image}"; then
+    if cosign sign --yes $sign_args "$@" ${recursive} ${tlog_upload} "${image}"; then
       sign_success=1
       break
     fi
@@ -232,6 +233,7 @@ cibuild__sign() {
     sign_try=$((sign_try + 1))
     sleep 3
   done
+
   if [ "$sign_success" -ne 1 ]; then
     cibuild_log_err "cosign signing failed after ${max_sign_retries} attempts"
     return 1
@@ -240,8 +242,7 @@ cibuild__sign() {
   if [ "${release_cosign_verify}" = "1" ]; then
     cibuild_log_debug "cosign verify $verify_args ${image}"
     while true; do
-      #if cosign verify $verify_args "${image}" >/dev/null 2>&1; then
-      if cosign verify $verify_args "${image}"; then
+      if cosign verify $verify_args "${image}" >/dev/null 2>&1; then
         cibuild_log_info "cosign verified after ${waited}s"
         break
       fi
@@ -268,10 +269,12 @@ cibuild__remove_signatures() {
 
   # always try to delete old .sig tags (also cleanup old *.sig tags if switched to new bundle format)
   for platform in $platforms; do
-      platform_name=$(echo "$platform" | tr '/' '-')
-      image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag})
+    platform_name=$(echo "$platform" | tr '/' '-')
+    image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" 2>/dev/null) || true
+    if [ -n "${image_digest:-}" ]; then
       sig_tag=$(echo "$image_digest" | sed 's/:/-/')".sig"
       regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
+    fi
   done
 
   # index sig
@@ -320,7 +323,7 @@ cibuild__release_create_index() {
 
   for platform in $platforms; do
     platform_name=$(echo "$platform" | tr '/' '-')
-    ref="${target_image}-${platform_name}:${build_tag}"
+    ref="${target_image}:${build_tag}-${platform_name}"
     if regctl -v error manifest head "$ref" >/dev/null 2>&1; then
       create_args="$create_args --ref $ref --platform $platform"
       found=1
@@ -348,7 +351,7 @@ cibuild__release_create_index() {
   if [ "${release_docker_attestation_manifest}" = "1" ]; then
     cibuild_log_debug "add docker attestation manifest"
     # only one platform is required for referencing
-    # if linux/amd64 is not found first platform im array is used
+    # if linux/amd64 is not found first platform in array is used
     set -- $platforms
     first=$1
     value=linux/amd64
@@ -359,15 +362,15 @@ cibuild__release_create_index() {
     esac
     platform_name=$(echo "${platform}" | tr '/' '-')
     
-    cibuild_log_debug "${target_image}-${platform_name}:${build_tag}"
+    cibuild_log_debug "${target_image}:${build_tag}-${platform_name}"
     
-    attestation_digest=$(cibuild__get_docker_attestation_digest "${target_image}-${platform_name}" "${build_tag}")
+    attestation_digest=$(cibuild__get_docker_attestation_digest "${target_image}" "${build_tag}" "${platform_name}")
     cibuild_log_debug "attestation: $attestation_digest"
     
-    image_digest=$(regctl -v error manifest head ${target_image}-${platform_name}:${build_tag} --platform ${platform})
+    image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}")
 
     if ! regctl -v error index add "${target_image}:${tmp_tag}" \
-      --ref ${target_image}-${platform_name}@${attestation_digest} \
+      --ref "${target_image}@${attestation_digest}" \
       --desc-platform unknown/unknown \
       --desc-annotation vnd.docker.reference.type=attestation-manifest \
       --desc-annotation vnd.docker.reference.digest=${image_digest}; then
@@ -394,7 +397,7 @@ cibuild__release_create_index() {
   if [ "$release_keep_platform_images" = "0" ]; then
     for platform in $platforms; do
       platform_name=$(echo "$platform" | tr '/' '-')
-      ref="${target_image}-${platform_name}:${build_tag}"
+      ref="${target_image}:${build_tag}-${platform_name}"
       cibuild_log_debug "try to delete tag ${ref}"
       if ! regctl -v error tag delete "${ref}"; then
         cibuild_log_err "error deleting ${ref}"
@@ -505,7 +508,6 @@ cibuild__release_create_regctl_auth_config() {
     fi
   done
   regctl registry config
-  #cat ${HOME}/.regctl/config.json
 }
 
 cibuild__mirror_registry_get_var() {
@@ -559,13 +561,13 @@ cibuild__release_mirrors() {
     local mirror_image="${reg}/${image_path}"
 
     if ! regctl -v error image copy --referrers --digest-tags ${target_image}@${cibuild__target_digest} ${mirror_image}@${cibuild__target_digest} >/dev/null 2>&1; then
-      cibuild_log_err "failed to set tag ${target_image}:@${cibuild__target_digest} for ${mirror_image}@${cibuild__target_digest}"
+      cibuild_log_err "failed to copy ${target_image}@${cibuild__target_digest} to ${mirror_image}@${cibuild__target_digest}"
       return 1
     fi
 
     if [ "${keep_build_tag:-1}" = "1" ]; then
-      if ! regctl -v error image copy ${mirror_image}:@${cibuild__target_digest} ${mirror_image}:${build_tag} >/dev/null 2>&1; then
-        cibuild_log_err "failed to set tag ${mirror_image}:@${cibuild__target_digest} for ${mirror_image}:${build_tag}"
+      if ! regctl -v error image copy ${mirror_image}@${cibuild__target_digest} ${mirror_image}:${build_tag} >/dev/null 2>&1; then
+        cibuild_log_err "failed to set tag ${mirror_image}:${build_tag}"
         return 1
       fi
     fi
@@ -576,10 +578,6 @@ cibuild__release_mirrors() {
     fi
     cibuild__release_minor_tag "${mirror_image}"
   done
-
-  #regctl registry config
-  #cibuild_log_debug "copy image to additional release_registry"
-  #if ! regctl -v error image copy ${target_image}:${cibuild__target_digest} ${target_image}:${copy_to_tag} >/dev/null 2>&1; then
 }
 
 cibuild_release_run() {

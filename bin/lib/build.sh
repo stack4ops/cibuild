@@ -136,11 +136,8 @@ cibuild__build_create_cert_files() {
     cibuild_main_err "CIBUILD_BUILD_BUILDKIT_CLIENT_KEY env var must not be empty"
   fi
   printf '%s\n' "$build_buildkit_client_ca" | base64 -d > /tmp/ca.pem
-  #cat /tmp/ca.pem
   printf '%s\n' "$build_buildkit_client_cert" | base64 -d > /tmp/cert.pem
-  #cat /tmp/cert.pem
   printf '%s\n' "$build_buildkit_client_key" | base64 -d > /tmp/key.pem
-  #cat /tmp/key.pem
 }
 
 cibuild__build_get_build_args() {
@@ -191,10 +188,10 @@ cibuild__build_get_import_cache_args() {
       printf '%s\n' ""
       ;;
     ci_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=$(cibuild_ci_image)-${arch}-cache:${build_tag}"
+      printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=$(cibuild_ci_image)-cache:${build_tag}-${arch}"
       ;;
     target_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=$(cibuild_ci_target_image)-${arch}-cache:${build_tag}"
+      printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=$(cibuild_ci_target_image)-cache:${build_tag}-${arch}"
       ;;
     *)
       printf '%s\n' "$(cibuild__build_get_cache_from_opt) ${build_import_cache}"
@@ -214,10 +211,10 @@ cibuild__build_get_export_cache_args() {
       printf '%s\n' ""
       ;;
     ci_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=$(cibuild_ci_image)-${arch}-cache:${build_tag},mode=${cache_mode}"
+      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=$(cibuild_ci_image)-cache:${build_tag}-${arch},mode=${cache_mode}"
       ;;
     target_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=$(cibuild_ci_target_image)-${arch}-cache:${build_tag},mode=${cache_mode}"
+      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=$(cibuild_ci_target_image)-cache:${build_tag}-${arch},mode=${cache_mode}"
       ;;
     *)
       printf '%s\n' "$(cibuild__build_get_cache_to_opt) ${build_export_cache}"
@@ -300,9 +297,7 @@ cibuild__build_image_buildx() {
     cibuild_log_debug "provenance_args: $provenance_args"
 
     cibuild_log_debug "build_args: $build_args"
-
     cibuild_log_debug "build_opts: $build_opts"
-
     cibuild_log_debug "build_http_proxy: $build_http_proxy"
     cibuild_log_debug "build_https_proxy: $build_https_proxy"
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
@@ -329,7 +324,7 @@ cibuild__build_image_buildx() {
       ${build_arguments} \
       ${no_cache} \
       ${cache} \
-      --tag "${target_image}-${platform_name}:${build_tag}" \
+      --tag "${target_image}:${build_tag}-${platform_name}" \
       --file "${container_file}" \
       --push \
       "$@" \
@@ -368,8 +363,6 @@ cibuild__build_image_buildctl() {
 
   cibuild_log_info "build image with buildctl"
 
-  # see: https://hub.docker.com/r/moby/buildkit
-  
   if [ "${build_remote_buildkit:-}" = "1" ]; then
     cibuild_log_info "build image with remote buildctl"
   else
@@ -383,7 +376,6 @@ cibuild__build_image_buildctl() {
   if [ "${build_remote_buildkit:-}" = "1" ]; then
     if [ -z "${build_buildkit_host:-}" ]; then
       cibuild_main_err "buildkit_host BUILDKIT_HOST required on remote_buildkit=1"
-      
     fi
     build_command="buildctl --addr ${build_buildkit_host}"
     if [ "${build_buildkit_tls:-1}" = "1" ]; then
@@ -418,9 +410,7 @@ cibuild__build_image_buildctl() {
     cibuild_log_debug "provenance_args: $provenance_args"
 
     cibuild_log_debug "build_args: $build_args"
-
     cibuild_log_debug "build_opts: $build_opts"
-
     cibuild_log_debug "build_http_proxy: $build_http_proxy"
     cibuild_log_debug "build_https_proxy: $build_https_proxy"
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
@@ -451,7 +441,7 @@ cibuild__build_image_buildctl() {
       ${build_args:-} \
       ${no_cache:-} \
       ${cache:-} \
-      --output type=image,name="${target_image}-${platform_name}:${build_tag:?}",oci-artifact=true,push=true \
+      --output "type=image,name=${target_image}:${build_tag}-${platform_name},oci-artifact=true,push=true" \
       "$@"; then
       cibuild_main_err "failed: $build_command"   
     fi
@@ -488,13 +478,8 @@ cibuild__build_image_kaniko() {
   for platform in ${platforms}; do
     platform_name=$(echo "${platform}" | tr '/' '-')
     cibuild_log_debug "platform_name: $platform_name"
-    
     cibuild_log_debug "build_args: $build_args"
-
     cibuild_log_debug "build_opts: $build_opts"
-
-    cibuild_log_debug "image_tag: $image_tag"
-
     cibuild_log_debug "build_http_proxy: $build_http_proxy"
     cibuild_log_debug "build_https_proxy: $build_https_proxy"
     cibuild_log_debug "build_no_proxy: $build_no_proxy"
@@ -505,7 +490,7 @@ cibuild__build_image_kaniko() {
     if [ "${build_use_cache}" = "0" ]; then
       cache_args="--cache=false"
     else
-      cache_args="--cache=true --cache-repo=${target_image}-${build_tag}-${platform_name}-cache"
+      cache_args="--cache=true --cache-repo=${target_image}-cache:${build_tag}-${platform_name}"
     fi
     
     cibuild_log_debug ${cache_args}
@@ -514,7 +499,7 @@ cibuild__build_image_kaniko() {
       --context dir:///repo/ \
       --dockerfile Dockerfile \
       --snapshot-mode redo \
-      --destination "${target_image}-${platform_name}:${build_tag}" \
+      --destination "${target_image}:${build_tag}-${platform_name}" \
       ${cache_args} \
       --custom-platform $platform \
       --build-arg TARGETARCH="${platform##*/}" \
