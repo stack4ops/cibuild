@@ -586,23 +586,26 @@ cibuild__release_write_summary() {
         build_platforms=$(cibuild_env_get 'build_platforms') \
         output_dir="${CIBUILD_OUTPUT_DIR:-$(pwd)/.cibuild}"
 
-  mkdir -p "${output_dir}"
+  id
+  ls -la $(pwd)
 
-  # digests
-  cat > "${output_dir}/digests.json" << EOF
-{
-  "index": "${cibuild__target_digest}",
-  "image": "${target_image}",
-  "tag": "${build_tag}",
-  "platforms": {
-$(for platform in $(echo "$build_platforms" | tr ',' ' '); do
-    platform_name=$(echo "$platform" | tr '/' '-')
-    digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}")
-    printf '    "%s": "%s",\n' "$platform" "$digest"
-  done)
-  }
-}
-EOF
+#   mkdir -p "${output_dir}"
+
+#   # digests
+#   cat > "${output_dir}/digests.json" << EOF
+# {
+#   "index": "${cibuild__target_digest}",
+#   "image": "${target_image}",
+#   "tag": "${build_tag}",
+#   "platforms": {
+# $(for platform in $(echo "$build_platforms" | tr ',' ' '); do
+#     platform_name=$(echo "$platform" | tr '/' '-')
+#     digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}")
+#     printf '    "%s": "%s",\n' "$platform" "$digest"
+#   done)
+#   }
+# }
+# EOF
 
   # # sbom aus registry lesen
   # regctl artifact get \
