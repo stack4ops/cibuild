@@ -580,6 +580,57 @@ cibuild__release_mirrors() {
   done
 }
 
+cibuild__release_write_summary() {
+  local target_image=$(cibuild_ci_target_image) \
+        build_tag=$(cibuild_ci_build_tag) \
+        build_platforms=$(cibuild_env_get 'build_platforms') \
+        output_dir="${CIBUILD_OUTPUT_DIR:-$(pwd)/.cibuild}"
+
+  mkdir -p "${output_dir}"
+
+  # digests
+  cat > "${output_dir}/digests.json" << EOF
+{
+  "index": "${cibuild__target_digest}",
+  "image": "${target_image}",
+  "tag": "${build_tag}",
+  "platforms": {
+$(for platform in $(echo "$build_platforms" | tr ',' ' '); do
+    platform_name=$(echo "$platform" | tr '/' '-')
+    digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}")
+    printf '    "%s": "%s",\n' "$platform" "$digest"
+  done)
+  }
+}
+EOF
+
+  # # sbom aus registry lesen
+  # regctl artifact get \
+  #   "${target_image}@${cibuild__target_digest}" \
+  #   --filter-artifact-type application/vnd.cyclonedx+json \
+  #   > "${output_dir}/sbom.cdx.json" 2>/dev/null || true
+
+  # # provenance aus registry lesen  
+  # regctl artifact get \
+  #   "${target_image}@${cibuild__target_digest}" \
+  #   --filter-artifact-type application/vnd.slsa+json \
+  #   > "${output_dir}/provenance.json" 2>/dev/null || true
+
+  # # cosign verify output
+  # cosign verify $verify_args "${target_image}@${cibuild__target_digest}" \
+  #   > "${output_dir}/signature.json" 2>/dev/null || true
+
+  # tlog entry falls vorhanden
+  # if [ "${release_cosign_tlog_upload}" = "1" ]; then
+  #   rekor-cli search --sha "${cibuild__target_digest#sha256:}" \
+  #     > "${output_dir}/tlog.json" 2>/dev/null || true
+  # fi
+
+  ls -la "${output_dir}"
+  cat "${output_dir}/digests.json"
+  cibuild_log_info "release summary written to ${output_dir}"
+}
+
 cibuild_release_run() {
   local release_enabled=$(cibuild_env_get 'release_enabled') \
         release_cosign_signature=$(cibuild_env_get 'release_cosign_signature') \
@@ -603,6 +654,9 @@ cibuild_release_run() {
   
   # mirror regs
   cibuild__release_mirrors
+
+  # write summary
+  cibuild__release_write_summary
 
   if ! cibuild_core_run_script release post; then
     exit 1
