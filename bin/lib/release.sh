@@ -595,7 +595,7 @@ cibuild__release_write_summary() {
   "platforms": {
 $(for platform in $(echo "$build_platforms" | tr ',' ' '); do
     platform_name=$(echo "$platform" | tr '/' '-')
-    digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}")
+    digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}")
     printf '    "%s": "%s",\n' "$platform" "$digest"
   done)
   }
