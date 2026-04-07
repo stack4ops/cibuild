@@ -279,8 +279,9 @@ cibuild__remove_signatures() {
   done
 
   # index sig
-  sig_tag=$(echo "${index_digest}" | sed 's/:/-/')".sig"
-  regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
+  fallback_tag=$(echo "${index_digest}" | sed 's/:/-/')
+  regctl -v error tag rm "${target_image}:${fallback_tag}" 2>/dev/null || true
+  regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 2>/dev/null || true
   
   cibuild_log_debug "try to remove dsse referrers for ${target_image}@${index_digest}"
 
