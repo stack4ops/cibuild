@@ -584,11 +584,10 @@ cibuild__release_write_summary() {
   local target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         build_platforms=$(cibuild_env_get 'build_platforms') \
-        output_dir="${CIBUILD_OUTPUT_DIR:-$(pwd)/.cibuild}"
+        output_dir="${CIBUILD_OUTPUT_DIR}"
 
-  id
-  ls -la $(pwd)
-
+  ls -la $output_dir
+  echo "sdsdf" > "${output_dir}/test.txt"
 #   mkdir -p "${output_dir}"
 
 #   # digests
@@ -629,8 +628,8 @@ cibuild__release_write_summary() {
   #     > "${output_dir}/tlog.json" 2>/dev/null || true
   # fi
 
-  ls -la "${output_dir}"
-  cat "${output_dir}/digests.json"
+  #ls -la "${output_dir}"
+  #cat "${output_dir}/digests.json"
   cibuild_log_info "release summary written to ${output_dir}"
 }
 
