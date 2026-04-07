@@ -270,10 +270,11 @@ cibuild__remove_signatures() {
   # always try to delete old .sig tags (also cleanup old *.sig tags if switched to new bundle format)
   for platform in $platforms; do
     platform_name=$(echo "$platform" | tr '/' '-')
-    image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" 2>/dev/null) || true
+    image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name} --platform ${platform}" 2>/dev/null) || true
     if [ -n "${image_digest:-}" ]; then
-      sig_tag=$(echo "$image_digest" | sed 's/:/-/')".sig"
-      regctl -v error tag rm "${target_image}:${sig_tag}" 2>/dev/null || true
+      fallback_tag=$(echo "${image_digest}" | sed 's/:/-/')
+      regctl -v error tag rm "${target_image}:${fallback_tag}" 2>/dev/null || true
+      regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 2>/dev/null || true
     fi
   done
 
