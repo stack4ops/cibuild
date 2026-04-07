@@ -273,20 +273,17 @@ cibuild__remove_signatures() {
     image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name} --platform ${platform}" 2>/dev/null) || true
     cibuild_log_debug "found platform image ${image_digest}"
     if [ -n "${image_digest:-}" ]; then
+      # see: cibuild__ci_cleanup_sig_tags in github adapter
       fallback_tag=$(echo "${image_digest}" | sed 's/:/-/')
-      regctl -v error tag rm "${target_image}:${fallback_tag}" 
-      #2>/dev/null || true
-      regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 
-      #2>/dev/null || true
+      regctl -v error tag rm "${target_image}:${fallback_tag}" 2>/dev/null || true
+      regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 2>/dev/null || true
     fi
   done
 
   # index sig
   fallback_tag=$(echo "${index_digest}" | sed 's/:/-/')
-  regctl -v error tag rm "${target_image}:${fallback_tag}" 
-  #2>/dev/null || true
-  regctl -v error tag rm "${target_image}:${fallback_tag}.sig"
-  #2>/dev/null || true
+  regctl -v error tag rm "${target_image}:${fallback_tag}" 2>/dev/null || true
+  regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 2>/dev/null || true
   
   cibuild_log_debug "try to remove dsse referrers for ${target_image}@${index_digest}"
 
@@ -602,7 +599,7 @@ cibuild__release_write_summary() {
   "platforms": {
 $(for platform in $(echo "$build_platforms" | tr ',' ' '); do
     platform_name=$(echo "$platform" | tr '/' '-')
-    digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}")
+    digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}")
     printf '    "%s": "%s",\n' "$platform" "$digest"
   done)
   }
