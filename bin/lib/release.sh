@@ -271,7 +271,7 @@ cibuild__remove_signatures() {
   for platform in $platforms; do
     platform_name=$(echo "$platform" | tr '/' '-')
     image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name} --platform ${platform}" 2>/dev/null) || true
-    cibuild_log_debug "found platform image ${image_digest}"
+    #cibuild_log_debug "found platform image ${image_digest}"
     if [ -n "${image_digest:-}" ]; then
       # see: cibuild__ci_cleanup_sig_tags in github adapter
       fallback_tag=$(echo "${image_digest}" | sed 's/:/-/')
@@ -611,33 +611,13 @@ for platform in $(echo "$build_platforms" | tr ',' ' '); do
   ref="${target_image}:${build_tag}-${platform_name}"
   docker buildx imagetools inspect "${ref}" \
     --format '{{json .SBOM.SPDX}}' \
-    > "${output_dir}/sbom-${platform_name}.spdx.json" 
-    #2>/dev/null || true
-  
-  cat "${output_dir}/sbom-${platform_name}.spdx.json"
+    > "${output_dir}/sbom-${platform_name}.spdx.json" 2>/dev/null || true
   
   docker buildx imagetools inspect "${ref}" \
     --format '{{json .Provenance.SLSA}}' \
-    > "${output_dir}/provenance-${platform_name}.slsa.json"
+    > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || true
   
-  cat "${output_dir}/provenance-${platform_name}.slsa.json"
-    #2>/dev/null || true
 done
-
-
-#if ! docker buildx imagetools inspect ghcr.io/stack4ops/cibuild-demo:signing-key-linux-amd64 --format '{{json .SBOM.SPDX}}' > /tmp/sbom.spdx.json
-
-  # # sbom aus registry lesen
-  # regctl artifact get \
-  #   "${target_image}@${cibuild__target_digest}" \
-  #   --filter-artifact-type application/vnd.cyclonedx+json \
-  #   > "${output_dir}/sbom.cdx.json" 2>/dev/null || true
-
-  # # provenance aus registry lesen  
-  # regctl artifact get \
-  #   "${target_image}@${cibuild__target_digest}" \
-  #   --filter-artifact-type application/vnd.slsa+json \
-  #   > "${output_dir}/provenance.json" 2>/dev/null || true
 
   # # cosign verify output
   # cosign verify $verify_args "${target_image}@${cibuild__target_digest}" \
@@ -649,7 +629,7 @@ done
   #     > "${output_dir}/tlog.json" 2>/dev/null || true
   # fi
 
-  #ls -la "${output_dir}"
+  ls -lat "${output_dir}"
   cat "${output_dir}/digests.json"
   cibuild_log_info "release summary written to ${output_dir}"
 }
