@@ -600,11 +600,26 @@ cibuild__release_write_summary() {
 $(for platform in $(echo "$build_platforms" | tr ',' ' '); do
     platform_name=$(echo "$platform" | tr '/' '-')
     digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}")
-    printf '    "%s": "%s",\n' "$platform" "$digest"
+    printf '    "%s": "%s",\n' "$platform" "$digest"    
   done)
   }
 }
 EOF
+
+for platform in $(echo "$build_platforms" | tr ',' ' '); do
+  platform_name=$(echo "$platform" | tr '/' '-')
+  ref="${target_image}:${build_tag}-${platform_name}"
+
+  docker buildx imagetools inspect "${ref}" \
+    --format '{{json .SBOM.SPDX}}' \
+    > "${output_dir}/sbom-${platform_name}.spdx.json" 2>/dev/null || true
+
+  docker buildx imagetools inspect "${ref}" \
+    --format '{{json .Provenance.SLSA}}' \
+    > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || true
+done
+
+#if ! docker buildx imagetools inspect ghcr.io/stack4ops/cibuild-demo:signing-key-linux-amd64 --format '{{json .SBOM.SPDX}}' > /tmp/sbom.spdx.json
 
   # # sbom aus registry lesen
   # regctl artifact get \
