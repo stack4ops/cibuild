@@ -609,15 +609,21 @@ EOF
 for platform in $(echo "$build_platforms" | tr ',' ' '); do
   platform_name=$(echo "$platform" | tr '/' '-')
   ref="${target_image}:${build_tag}-${platform_name}"
-
   docker buildx imagetools inspect "${ref}" \
     --format '{{json .SBOM.SPDX}}' \
-    > "${output_dir}/sbom-${platform_name}.spdx.json" 2>/dev/null || true
-
+    > "${output_dir}/sbom-${platform_name}.spdx.json" 
+    #2>/dev/null || true
+  
+  cat "${output_dir}/sbom-${platform_name}.spdx.json"
+  
   docker buildx imagetools inspect "${ref}" \
     --format '{{json .Provenance.SLSA}}' \
-    > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || true
+    > "${output_dir}/provenance-${platform_name}.slsa.json"
+  
+  cat "${output_dir}/provenance-${platform_name}.slsa.json"
+    #2>/dev/null || true
 done
+
 
 #if ! docker buildx imagetools inspect ghcr.io/stack4ops/cibuild-demo:signing-key-linux-amd64 --format '{{json .SBOM.SPDX}}' > /tmp/sbom.spdx.json
 
