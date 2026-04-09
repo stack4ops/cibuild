@@ -617,8 +617,8 @@ for platform in $(echo "$build_platforms" | tr ',' ' '); do
     > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || true
   done
 
-  if [ "${"$release_cosign_signing_mode"}" = "keyless" ]; then
-    if cosign download signature "${target_image}:${build_tag}" | jq > "${output_dir}/cert.json"
+  if [ "${$release_cosign_signing_mode}" = "keyless" ]; then
+    cosign download signature "${target_image}:${build_tag}" | jq > "${output_dir}/cert.json"
   fi
 
   cibuild_log_info "release summary written to ${output_dir}"
