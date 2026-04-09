@@ -215,7 +215,9 @@ cibuild__sign() {
   local tlog_upload=""
 
   if [ "${release_cosign_tlog_upload}" = "1" ] && [ "${release_cosign_signing_mode}" = "keyless" ]; then
-    tlog_upload="--tlog-upload"
+    tlog_upload="--tlog-upload=true"
+  else
+    tlog_upload="--tlog-upload=false"
   fi
 
   local recursive=""
