@@ -142,7 +142,8 @@ cibuild__sign() {
         verify_interval=3 \
         waited=0 \
         sign_args="" \
-        verify_args=""
+        verify_args="" \
+        use_signing_config=""
         
   cibuild_log_debug "signing $image mode=${release_cosign_signing_mode}"
 
@@ -150,13 +151,27 @@ cibuild__sign() {
 
   export COSIGN_PASSWORD=""
   export COSIGN_NON_INTERACTIVE=1
-  
+
   case "$release_cosign_experimental" in
     "0")
       export COSIGN_EXPERIMENTAL=0
+      use_signing_config="--use-signing-config=false"
     ;;
     "1")
       export COSIGN_EXPERIMENTAL=1
+      if [ -z "${release_cosign_signing_config}" ]; then
+        cibuild_log_debug "create empty signing config"
+        cosign signing-config create \
+          --no-default-rekor \
+          --no-default-fulcio \
+          --no-default-oidc \
+          --no-default-tsa \
+          --out /tmp/cosign.json
+      else
+        cibuild_log_debug "copy release_cosign_signing_config > /tmp/cosign.json"
+        printf '%s\n' "$release_cosign_signing_config" | base64 -d > /tmp/cosign.json
+      fi
+      use_signing_config="--signing-config=/tmp/cosign.json"
     ;;
     *)
       cibuild_log_err "COSIGN_EXPERIMENTAL=$release_cosign_experimental not supported"
@@ -212,7 +227,7 @@ cibuild__sign() {
     ;;
   esac
 
-  local use_signing_config="--use-signing-config=false" #ToDo: use signing-config from env
+  
   local tlog_upload=""
 
   if [ "${release_cosign_tlog_upload}" = "1" ] && [ "${release_cosign_signing_mode}" = "keyless" ]; then
