@@ -129,10 +129,8 @@ cibuild__get_minor_tag() {
 cibuild__sign() {
   local image="$1" \
         release_cosign_signing_mode=$(cibuild_env_get 'release_cosign_signing_mode') \
-        release_cosign_tlog_upload=$(cibuild_env_get 'release_cosign_tlog_upload') \
+        release_cosign_new_bundle_format=$(cibuild_env_get 'release_cosign_new_bundle_format') \
         release_cosign_verify=$(cibuild_env_get 'release_cosign_verify') \
-        release_cosign_experimental=$(cibuild_env_get 'release_cosign_experimental') \
-        release_cosign_registry_referrers_mode=$(cibuild_env_get 'release_cosign_registry_referrers_mode') \
         release_cosign_signing_recursive=$(cibuild_env_get 'release_cosign_signing_recursive') \
         release_cosign_signing_config=$(cibuild_env_get 'release_cosign_signing_config') \
         max_sign_retries=3 \
@@ -152,46 +150,39 @@ cibuild__sign() {
   export COSIGN_PASSWORD=""
   export COSIGN_NON_INTERACTIVE=1
 
-  case "$release_cosign_experimental" in
-    "0")
-      export COSIGN_EXPERIMENTAL=0
-      use_signing_config="--use-signing-config=false"
-    ;;
-    "1")
-      export COSIGN_EXPERIMENTAL=1
-      if [ -z "${release_cosign_signing_config}" ]; then
-        cibuild_log_debug "create empty signing config"
-        cosign signing-config create \
-          --no-default-rekor \
-          --no-default-fulcio \
-          --no-default-oidc \
-          --no-default-tsa \
-          --out /tmp/cosign.json
-      else
-        cibuild_log_debug "copy release_cosign_signing_config > /tmp/cosign.json"
-        printf '%s\n' "$release_cosign_signing_config" | base64 -d > /tmp/cosign.json
-      fi
-      use_signing_config="--signing-config=/tmp/cosign.json"
-    ;;
-    *)
-      cibuild_log_err "COSIGN_EXPERIMENTAL=$release_cosign_experimental not supported"
-      return 1
-    ;;
-  esac 
+  local new_bundle_format="" # default
 
-  case "$release_cosign_registry_referrers_mode" in
-    "legacy")
-      export COSIGN_REGISTRY_REFERRERS_MODE=legacy
-    ;;
-    "oci-1-1")
-      export COSIGN_REGISTRY_REFERRERS_MODE=oci-1-1
-    ;;
-    *)
-      cibuild_log_err "COSIGN_REGISTRY_REFERRERS_MODE=$release_cosign_registry_referrers_mode not supported"
-      return 1
-    ;;
-  esac
+  if [ "${release_cosign_new_bundle_format}" = "0" ]; then
+    new_bundle_format="--new-bundle-format=false"
+  fi
+
+  use_signing_config=""
+
+  if [ -z "${release_cosign_signing_config}" ]; then
+    cibuild_log_debug "no default signing config, create empty signing config for key mode"
+    if [ "${release_cosign_signing_mode}" = "key" ]; then
+      cibuild_log_debug "create empty signing config"
+      cosign signing-config create \
+        --no-default-rekor \
+        --no-default-fulcio \
+        --no-default-oidc \
+        --no-default-tsa \
+        --out /tmp/cosign.json
+      use_signing_config="--signing-config=/tmp/cosign.json"
+    fi
+      cibuild_log_debug "no default signing config: keep defaults from cosign in keyless mode"
+      use_signing_config=""
+    else
+  else
+    cibuild_log_debug "copy release_cosign_signing_config > /tmp/cosign.json, use in key and keyless mode"
+    printf '%s\n' "$release_cosign_signing_config" | base64 -d > /tmp/cosign.json
+    use_signing_config="--signing-config=/tmp/cosign.json"
+  fi
+
+  if 
   
+  #use_signing_config="--signing-config=/tmp/cosign.json"
+     
   case "$release_cosign_signing_mode" in
     "key")
       if [ -z "${release_cosign_private_key:-}" ]; then
@@ -227,15 +218,6 @@ cibuild__sign() {
     ;;
   esac
 
-  
-  local tlog_upload=""
-
-  if [ "${release_cosign_tlog_upload}" = "1" ] && [ "${release_cosign_signing_mode}" = "keyless" ]; then
-    tlog_upload="--tlog-upload=true"
-  else
-    tlog_upload="--tlog-upload=false"
-  fi
-
   local recursive=""
 
   if [ "${release_cosign_signing_recursive}" = "1" ]; then
@@ -243,7 +225,7 @@ cibuild__sign() {
   fi
 
   while [ "$sign_try" -le "$max_sign_retries" ]; do
-    if cosign sign --yes $sign_args "$@" ${recursive} ${tlog_upload} ${use_signing_config} "${image}"; then
+    if cosign sign --yes $sign_args "$@" ${recursive} ${use_signing_config} ${new_bundle_format} "${image}"; then
       sign_success=1
       break
     fi
