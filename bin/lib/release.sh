@@ -212,6 +212,7 @@ cibuild__sign() {
     ;;
   esac
 
+  local use_signing_config="--use-signing-config=false" #ToDo: use signing-config from env
   local tlog_upload=""
 
   if [ "${release_cosign_tlog_upload}" = "1" ] && [ "${release_cosign_signing_mode}" = "keyless" ]; then
@@ -227,7 +228,7 @@ cibuild__sign() {
   fi
 
   while [ "$sign_try" -le "$max_sign_retries" ]; do
-    if cosign sign --yes $sign_args "$@" ${recursive} ${tlog_upload} "${image}"; then
+    if cosign sign --yes $sign_args "$@" ${recursive} ${tlog_upload} ${use_signing_config} "${image}"; then
       sign_success=1
       break
     fi
