@@ -586,7 +586,8 @@ cibuild__release_write_summary() {
   local target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         build_platforms=$(cibuild_env_get 'build_platforms') \
-        output_dir="${CIBUILD_OUTPUT_DIR}"
+        output_dir="${CIBUILD_OUTPUT_DIR}" \
+        release_cosign_signing_mode=$(cibuild_env_get 'release_cosign_signing_mode')
 
   # digests
   cat > "${output_dir}/digests.json" << EOF
@@ -614,18 +615,12 @@ for platform in $(echo "$build_platforms" | tr ',' ' '); do
   docker buildx imagetools inspect "${ref}" \
     --format '{{json .Provenance.SLSA}}' \
     > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || true
-  
-done
+  done
 
-  # # cosign verify output
-  # cosign verify $verify_args "${target_image}@${cibuild__target_digest}" \
-  #   > "${output_dir}/signature.json" 2>/dev/null || true
+  if [ "${"$release_cosign_signing_mode"}" = "keyless" ]; then
+    if cosign download signature "${target_image}:${build_tag}" | jq > "${output_dir}/cert.json"
+  fi
 
-  # tlog entry falls vorhanden
-  # if [ "${release_cosign_tlog_upload}" = "1" ]; then
-  #   rekor-cli search --sha "${cibuild__target_digest#sha256:}" \
-  #     > "${output_dir}/tlog.json" 2>/dev/null || true
-  # fi
   cibuild_log_info "release summary written to ${output_dir}"
   ls -lat "${output_dir}"
 }
