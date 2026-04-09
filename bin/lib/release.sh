@@ -198,7 +198,7 @@ cibuild__sign() {
         fi
       fi
       sign_args="--key=/tmp/cosign.key"
-      verify_args="--key=/tmp/cosign.pub"
+      verify_args="--key=/tmp/cosign.pub --private-infrastructure"
     ;;
     "keyless")
       sign_args=""
