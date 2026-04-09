@@ -268,7 +268,7 @@ cibuild__remove_signatures() {
   # always try to delete old .sig tags (also cleanup old *.sig tags if switched to new bundle format)
   for platform in $platforms; do
     platform_name=$(echo "$platform" | tr '/' '-')
-    image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name} --platform ${platform}" 2>/dev/null) || true
+    image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}" 2>/dev/null) || true
     #cibuild_log_debug "found platform image ${image_digest}"
     if [ -n "${image_digest:-}" ]; then
       # see: cibuild__ci_cleanup_sig_tags in github adapter
@@ -605,19 +605,19 @@ $(for platform in $(echo "$build_platforms" | tr ',' ' '); do
 }
 EOF
 
-for platform in $(echo "$build_platforms" | tr ',' ' '); do
-  platform_name=$(echo "$platform" | tr '/' '-')
-  ref="${target_image}:${build_tag}-${platform_name}"
-  docker buildx imagetools inspect "${ref}" \
-    --format '{{json .SBOM.SPDX}}' \
-    > "${output_dir}/sbom-${platform_name}.spdx.json" 2>/dev/null || true
-  
-  docker buildx imagetools inspect "${ref}" \
-    --format '{{json .Provenance.SLSA}}' \
-    > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || true
+  for platform in $(echo "$build_platforms" | tr ',' ' '); do
+    platform_name=$(echo "$platform" | tr '/' '-')
+    ref="${target_image}:${build_tag}-${platform_name}"
+    docker buildx imagetools inspect "${ref}" \
+      --format '{{json .SBOM.SPDX}}' \
+      > "${output_dir}/sbom-${platform_name}.spdx.json" 2>/dev/null || true
+    
+    docker buildx imagetools inspect "${ref}" \
+      --format '{{json .Provenance.SLSA}}' \
+      > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || true
   done
 
-  if [ "${$release_cosign_signing_mode}" = "keyless" ]; then
+  if [ "${release_cosign_signing_mode}" = "keyless" ]; then
     cosign download signature "${target_image}:${build_tag}" | jq > "${output_dir}/cert.json"
   fi
 
