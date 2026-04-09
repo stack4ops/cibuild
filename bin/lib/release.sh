@@ -159,8 +159,8 @@ cibuild__sign() {
   use_signing_config=""
 
   if [ -z "${release_cosign_signing_config}" ]; then
-    cibuild_log_debug "no default signing config, create empty signing config for key mode"
     if [ "${release_cosign_signing_mode}" = "key" ]; then
+      cibuild_log_debug "no default signing config, create empty signing config for key mode"
       cibuild_log_debug "create empty signing config"
       cosign signing-config create \
         --no-default-rekor \
@@ -169,17 +169,15 @@ cibuild__sign() {
         --no-default-tsa \
         --out /tmp/cosign.json
       use_signing_config="--signing-config=/tmp/cosign.json"
-    fi
-      cibuild_log_debug "no default signing config: keep defaults from cosign in keyless mode"
-      use_signing_config=""
     else
+      cibuild_log_debug "no signing config: keep defaults from cosign in keyless mode"
+      use_signing_config=""
+    fi
   else
     cibuild_log_debug "copy release_cosign_signing_config > /tmp/cosign.json, use in key and keyless mode"
     printf '%s\n' "$release_cosign_signing_config" | base64 -d > /tmp/cosign.json
     use_signing_config="--signing-config=/tmp/cosign.json"
   fi
-
-  if 
   
   #use_signing_config="--signing-config=/tmp/cosign.json"
      
