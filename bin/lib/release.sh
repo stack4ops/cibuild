@@ -626,10 +626,8 @@ done
   #   rekor-cli search --sha "${cibuild__target_digest#sha256:}" \
   #     > "${output_dir}/tlog.json" 2>/dev/null || true
   # fi
-
-  ls -lat "${output_dir}"
-  cat "${output_dir}/digests.json"
   cibuild_log_info "release summary written to ${output_dir}"
+  ls -lat "${output_dir}"
 }
 
 cibuild_release_run() {
