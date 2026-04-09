@@ -589,21 +589,20 @@ cibuild__release_write_summary() {
         output_dir="${CIBUILD_OUTPUT_DIR}" \
         release_cosign_signing_mode=$(cibuild_env_get 'release_cosign_signing_mode')
 
-  # digests
-  cat > "${output_dir}/digests.json" << EOF
-{
-  "index": "${cibuild__target_digest}",
-  "image": "${target_image}",
-  "tag": "${build_tag}",
-  "platforms": {
-$(for platform in $(echo "$build_platforms" | tr ',' ' '); do
+  digests_json="{}"
+  for platform in $(echo "$build_platforms" | tr ',' ' '); do
     platform_name=$(echo "$platform" | tr '/' '-')
     digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}")
-    printf '    "%s": "%s",\n' "$platform" "$digest"    
-  done)
-  }
-}
-EOF
+    digests_json=$(echo "$digests_json" | jq --arg p "$platform" --arg d "$digest" '.[$p]=$d')
+  done
+
+  jq -n \
+    --arg index "${cibuild__target_digest}" \
+    --arg image "${target_image}" \
+    --arg tag "${build_tag}" \
+    --argjson platforms "$digests_json" \
+    '{index: $index, image: $image, tag: $tag, platforms: $platforms}' \
+    > "${output_dir}/digests.json"
 
   for platform in $(echo "$build_platforms" | tr ',' ' '); do
     platform_name=$(echo "$platform" | tr '/' '-')
