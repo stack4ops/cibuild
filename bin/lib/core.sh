@@ -364,6 +364,20 @@ cibuild_function_exists() {
   type "$1" > /dev/null 2>&1
 }
 
+cibuild_is_ghcr() {
+  case "$1" in
+    ghcr.io/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+cibuild_is_docker() {
+  case "$1" in
+    docker.io/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 cibuild_core_init() {
   [ "${_CIBUILD_CORE_INIT_DONE:-}" = "1" ] && return
   _CIBUILD_CORE_INIT_DONE=1
