@@ -289,6 +289,15 @@ cibuild__ci_cleanup_tag() {
     local owner="${repo%%/*}"
     local package="${repo#*/}"
 
+    # tmp tags never delete
+    # pointing always to build_tag package
+    case "${tag}" in
+      *-tmp)
+        cibuild_log_debug "ghcr.io: skipping tmp tag delete - same version as build tag"
+        return 0
+        ;;
+    esac
+
     local versions
     versions=$(curl -sf \
       -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -299,9 +308,21 @@ cibuild__ci_cleanup_tag() {
 
     local version_id
     version_id=$(echo "$versions" \
-      | jq -r ".[] | select((.metadata.container.tags // [])[] | . == \"${tag}\") | .id")
+      | jq -r ".[] | select((.metadata.container.tags // [])[] | . == \"${tag}\") | .id \
+               | select(. != null)" \
+      | head -1)
 
     if [ -n "${version_id}" ]; then
+      # ensure digest is only referred by this tag
+      local tag_count
+      tag_count=$(echo "$versions" \
+        | jq -r ".[] | select(.id == ${version_id}) | .metadata.container.tags | length")
+      
+      if [ "${tag_count}" -gt 1 ]; then
+        cibuild_log_debug "ghcr.io: skipping delete - version ${version_id} has ${tag_count} tags"
+        return 0
+      fi
+
       if curl -sf -X DELETE \
         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
         "https://api.github.com/users/${owner}/packages/container/${package}/versions/${version_id}"; then
