@@ -341,9 +341,7 @@ cibuild__release_create_index() {
         attestation_digest \
         image_digest \
         release_cosign_signature=$(cibuild_env_get 'release_cosign_signature') \
-        release_remove_old_signatures=$(cibuild_env_get 'release_remove_old_signatures') \
-        release_keep_platform_tags=$(cibuild_env_get 'release_keep_platform_tags') \
-        release_keep_tmp_tag=$(cibuild_env_get 'release_keep_tmp_tag')
+        release_remove_old_signatures=$(cibuild_env_get 'release_remove_old_signatures')
 
   platforms=$(echo "$build_platforms" | tr ',' ' ')
 
@@ -365,7 +363,7 @@ cibuild__release_create_index() {
     cibuild_main_err "no platform images found, cannot create index ${target_image}:${build_tag}"
   fi
 
-  tmp_tag="${build_tag}_tmp"
+  local tmp_tag="${build_tag}-tmp"
   if ! regctl -v error index create "$target_image:$tmp_tag" $create_args; then
     cibuild_main_err "error creating image index ${target_image}:${tmp_tag}"
   fi
@@ -421,19 +419,6 @@ cibuild__release_create_index() {
       cibuild__remove_signatures ${target_image} ${cibuild__target_digest}
     fi
     cibuild__sign "${target_image}@${cibuild__target_digest}"
-  fi
-
-  if [ "$release_keep_platform_tags" = "0" ]; then
-    for platform in $platforms; do
-      platform_name=$(echo "$platform" | tr '/' '-')
-      cibuild_log_debug "try to delete ${target_image}:${build_tag}-${platform_name}"
-      cibuild__ci_cleanup_tag "${target_image}" "${build_tag}-${platform_name}"
-    done
-  fi
-
-  if [ "$release_keep_tmp_tag" = "0" ]; then
-    cibuild_log_debug "try to delete ${target_image}:${tmp_tag}"
-    cibuild__ci_cleanup_tag "${target_image}" "${tmp_tag}"
   fi
 }
 
@@ -646,6 +631,32 @@ cibuild__release_write_summary() {
   ls -lat "${output_dir}"
 }
 
+cibuild__release_clean_tags() {
+  local target_image=$(cibuild_ci_target_image) \
+        build_tag=$(cibuild_ci_build_tag) \
+        platforms \
+        build_platforms=$(cibuild_env_get 'build_platforms') \
+        release_keep_platform_tags=$(cibuild_env_get 'release_keep_platform_tags') \
+        release_keep_tmp_tag=$(cibuild_env_get 'release_keep_tmp_tag')
+
+  platforms=$(echo "$build_platforms" | tr ',' ' ')
+  
+  local tmp_tag="${build_tag}-tmp"
+
+  if [ "${release_keep_platform_tags}" = "0" ]; then
+    for platform in $platforms; do
+      platform_name=$(echo "$platform" | tr '/' '-')
+      cibuild_log_debug "try to delete ${target_image}:${build_tag}-${platform_name}"
+      cibuild__ci_cleanup_tag "${target_image}" "${build_tag}-${platform_name}"
+    done
+  fi
+
+  if [ "$release_keep_tmp_tag" = "0" ]; then
+    cibuild_log_debug "try to delete ${target_image}:${tmp_tag}"
+    cibuild__ci_cleanup_tag "${target_image}" "${tmp_tag}"
+  fi
+}
+
 cibuild_release_run() {
   local release_enabled=$(cibuild_env_get 'release_enabled') \
         release_cosign_signature=$(cibuild_env_get 'release_cosign_signature') \
@@ -672,6 +683,9 @@ cibuild_release_run() {
 
   # write summary
   cibuild__release_write_summary
+
+  # clean tags
+  cibuild__release_clean_tags
 
   if ! cibuild_core_run_script release post; then
     exit 1
