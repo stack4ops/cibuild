@@ -241,29 +241,31 @@ cibuild__ci_get_cosign_keyless_verify_args() {
 cibuild__ci_cleanup_sig_tags() {
   local image="$1"
   local digest="$2"
-  local repo="${image#ghcr.io/}"
-  local owner="${repo%%/*}"
-  local package="${repo#*/}"
   local sig_prefix
   sig_prefix=$(echo "$digest" | sed 's/:/-/')
-  
-  cibuild_log_debug "repo: ${repo}"
-  cibuild_log_debug "owner: ${owner}"
-  cibuild_log_debug "package: ${package}"
   cibuild_log_debug "sig_prefix: ${sig_prefix}"
-
-  # find all versions with sig prefix and delete
-  curl -sf \
-    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-    "https://api.github.com/users/${owner}/packages/container/${package}/versions" \
-    | jq -r ".[] | select((.metadata.container.tags // [])[] | startswith(\"${sig_prefix}\")) | .id" \
-    | while read -r version_id; do
-        curl -sf -X DELETE \
-          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-          "https://api.github.com/users/${owner}/packages/container/${package}/versions/${version_id}" \
-          && cibuild_log_debug "deleted sig version ${version_id}" \
-          || cibuild_log_debug "failed to delete sig version ${version_id}"
-      done
+  
+  if cibuild_is_ghcr "${image}"; then
+    local repo="${image#ghcr.io/}"
+    local owner="${repo%%/*}"
+    local package="${repo#*/}"
+    
+    # find all versions with sig prefix and delete
+    curl -sf \
+      -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+      "https://api.github.com/users/${owner}/packages/container/${package}/versions" \
+      | jq -r ".[] | select((.metadata.container.tags // [])[] | startswith(\"${sig_prefix}\")) | .id" \
+      | while read -r version_id; do
+          curl -sf -X DELETE \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            "https://api.github.com/users/${owner}/packages/container/${package}/versions/${version_id}" \
+            && cibuild_log_info "deleted sig version ${version_id}" \
+            || cibuild_log_debug "failed to delete sig version ${version_id}"
+        done
+  else
+    regctl -v error tag rm "${target_image}:${sig_prefix}" 2>/dev/null || true
+    regctl -v error tag rm "${target_image}:${sig_prefix}.sig" 2>/dev/null || true
+  fi
 }
 
 cibuild__ci_init() {

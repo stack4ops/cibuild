@@ -254,6 +254,38 @@ cibuild__sign() {
   fi
 }
 
+cibuild__delete_dsse_sig() {
+  local target_image=$1 \
+        image_digest=$2 \
+        bundle_content=""
+
+  cibuild_log_debug "try to remove dsse referrers for ${target_image}@${image_digest}"
+    regctl -v error artifact list "$target_image@$image_digest" \
+      --format '{{range .Descriptors}}{{.Digest}}{{"\n"}}{{end}}' 2>/dev/null \
+      | while read -r ref_digest; do
+          [ -z "$ref_digest" ] && continue
+          bundle_content=$(regctl -v error manifest get "${target_image}@${ref_digest}" \
+          --format '{{ index .Annotations "dev.sigstore.bundle.content" }}' 2>/dev/null)
+          cibuild_log_debug "found ${bundle_content}"
+          if [ "${bundle_content}" = "dsse-envelope" ]; then
+            cibuild_log_debug "delete dsse manifest: ${target_image}@${ref_digest} if exists"
+            regctl -v error manifest delete "${target_image}@${ref_digest}" 2>/dev/null || true
+          fi
+        done
+}
+
+# signature storage formats:
+#
+# new bundle format (OCI 1.1 referrers):
+#   stored as referrer manifest via subject field, no tag
+#   requires registry referrers API support
+#
+# old bundle format fallback (legacy):
+#   "sha256-DIGEST"     : cosign internal fallback if referrers API not supported
+#                         (new bundle format attempted but registry lacks referrers API)
+#   "sha256-DIGEST.sig" : explicit --new-bundle-format=false
+#                         (required for Harbor UI signature detection as "signature.cosign")
+
 cibuild__remove_signatures() {
   local target_image=$1 \
         index_digest=$2 \
@@ -265,19 +297,7 @@ cibuild__remove_signatures() {
   
   platforms=$(echo "$build_platforms" | tr ',' ' ')
 
-  # signature storage formats:
-  #
-  # new bundle format (OCI 1.1 referrers):
-  #   stored as referrer manifest via subject field, no tag
-  #   requires registry referrers API support
-  #
-  # old bundle format fallback (legacy):
-  #   "sha256-DIGEST"     : cosign internal fallback if referrers API not supported
-  #                         (new bundle format attempted but registry lacks referrers API)
-  #   "sha256-DIGEST.sig" : explicit --new-bundle-format=false
-  #                         (required for Harbor UI signature detection as "signature.cosign")
-
-  # always try to remove any legacy signature tags if already exists for platform images (recursive signed) or index digests (no recursion)  
+  # always try to remove any legacy signature tags if already exists for platform images (recursive signed) and index digests (no recursion)
   
   # platform images
   for platform in $platforms; do
@@ -285,65 +305,28 @@ cibuild__remove_signatures() {
     image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}" 2>/dev/null) || true
     if [ -n "${image_digest:-}" ]; then
       #cibuild_log_debug "found platform image ${image_digest}"
-      if cibuild_function_exists cibuild__ci_cleanup_sig_tags; then
-        cibuild_log_debug "use cibuild__ci_cleanup_sig_tags for cleanup platform sig tag $platform"
-        cibuild__ci_cleanup_sig_tags "${target_image}" "${image_digest}"
-      else
-        cibuild_log_debug "use generic regctl method for cleanup"
-        fallback_tag=$(echo "${image_digest}" | sed 's/:/-/')
-        regctl -v error tag rm "${target_image}:${fallback_tag}" 2>/dev/null || true
-        regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 2>/dev/null || true
-      fi
+      cibuild_log_debug "use cibuild__ci_cleanup_sig_tags for cleanup platform sig tag $platform"
+      cibuild__ci_cleanup_sig_tags "${target_image}" "${image_digest}"
     fi
   done
 
   # image index
-  if cibuild_function_exists cibuild__ci_cleanup_sig_tags; then
-    cibuild_log_debug "use cibuild__ci_cleanup_sig_tags for cleanup index sig tag"
-    cibuild__ci_cleanup_sig_tags "${target_image}" "${index_digest}"
-  else
-    fallback_tag=$(echo "${index_digest}" | sed 's/:/-/')
-    regctl -v error tag rm "${target_image}:${fallback_tag}" 2>/dev/null || true
-    regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 2>/dev/null || true
-  fi
+  cibuild_log_debug "use cibuild__ci_cleanup_sig_tags for cleanup index sig tag"
+  cibuild__ci_cleanup_sig_tags "${target_image}" "${index_digest}"
   
-
-  # new bundle format oci 1.1
+  # now check new bundle format oci 1.1
   
+  # platform images
   for platform in $platforms; do
     platform_name=$(echo "$platform" | tr '/' '-')
     image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}" 2>/dev/null) || true
     if [ -n "${image_digest:-}" ]; then
-      cibuild_log_debug "try to remove dsse referrers for platform image ${target_image}@${image_digest}"
-      regctl -v error artifact list "$target_image@$image_digest" \
-      --format '{{range .Descriptors}}{{.Digest}}{{"\n"}}{{end}}' 2>/dev/null \
-        | while read -r ref_digest; do
-            [ -z "$ref_digest" ] && continue
-            bundle_content=$(regctl -v error manifest get "${target_image}@${ref_digest}" \
-            --format '{{ index .Annotations "dev.sigstore.bundle.content" }}' 2>/dev/null)
-            cibuild_log_debug "found ${bundle_content}"
-            if [ "${bundle_content}" = "dsse-envelope" ]; then
-              cibuild_log_debug "delete dsse manifest: ${target_image}@${ref_digest} if exists"
-              regctl -v error manifest delete "${target_image}@${ref_digest}" 2>/dev/null || true
-            fi
-          done
+      cibuild__delete_dsse_sig "${target_image}" "${image_digest}"
     fi
   done
 
-  cibuild_log_debug "try to remove dsse referrers for ${target_image}@${index_digest}"
-
-  regctl -v error artifact list "$target_image@$index_digest" \
-  --format '{{range .Descriptors}}{{.Digest}}{{"\n"}}{{end}}' 2>/dev/null \
-    | while read -r ref_digest; do
-        [ -z "$ref_digest" ] && continue
-        bundle_content=$(regctl -v error manifest get "${target_image}@${ref_digest}" \
-        --format '{{ index .Annotations "dev.sigstore.bundle.content" }}' 2>/dev/null)
-        cibuild_log_debug "found ${bundle_content}"
-        if [ "${bundle_content}" = "dsse-envelope" ]; then
-          cibuild_log_debug "delete dsse manifest: ${target_image}@${ref_digest} if exists"
-          regctl -v error manifest delete "${target_image}@${ref_digest}" 2>/dev/null || true
-        fi
-      done
+  # index 
+  cibuild__delete_dsse_sig "${target_image}" "${index_digest}"
 }
 
 cibuild__release_create_index() {

@@ -242,6 +242,16 @@ cibuild__ci_get_cosign_keyless_verify_args() {
     "${CI_SERVER_URL}"
 }
 
+cibuild__ci_cleanup_sig_tags() {
+  local image="$1"
+  local digest="$2"
+  local sig_prefix
+  sig_prefix=$(echo "$digest" | sed 's/:/-/')
+  cibuild_log_debug "sig_prefix: ${sig_prefix}"
+  regctl -v error tag rm "${target_image}:${sig_prefix}" 2>/dev/null || true
+  regctl -v error tag rm "${target_image}:${sig_prefix}.sig" 2>/dev/null || true
+}
+
 cibuild__ci_init() {
 
   cibuild_log_info "init ci: $(cibuild_ci_type)"
