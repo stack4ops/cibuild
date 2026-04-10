@@ -306,13 +306,13 @@ cibuild__remove_signatures() {
     if [ -n "${image_digest:-}" ]; then
       #cibuild_log_debug "found platform image ${image_digest}"
       cibuild_log_debug "use cibuild__ci_cleanup_sig_tags for cleanup platform sig tag $platform"
-      cibuild__ci_cleanup_sig_tags "${target_image}" "${image_digest}"
+      cibuild__ci_cleanup_signatures "${target_image}" "${image_digest}"
     fi
   done
 
   # image index
   cibuild_log_debug "use cibuild__ci_cleanup_sig_tags for cleanup index sig tag"
-  cibuild__ci_cleanup_sig_tags "${target_image}" "${index_digest}"
+  cibuild__ci_cleanup_signatures "${target_image}" "${index_digest}"
   
   # now check new bundle format oci 1.1
   
@@ -342,7 +342,7 @@ cibuild__release_create_index() {
         image_digest \
         release_cosign_signature=$(cibuild_env_get 'release_cosign_signature') \
         release_remove_old_signatures=$(cibuild_env_get 'release_remove_old_signatures') \
-        release_keep_platform_images=$(cibuild_env_get 'release_keep_platform_images') \
+        release_keep_platform_tags=$(cibuild_env_get 'release_keep_platform_tags') \
         release_keep_tmp_tag=$(cibuild_env_get 'release_keep_tmp_tag')
 
   platforms=$(echo "$build_platforms" | tr ',' ' ')
@@ -423,22 +423,17 @@ cibuild__release_create_index() {
     cibuild__sign "${target_image}@${cibuild__target_digest}"
   fi
 
-  if [ "$release_keep_platform_images" = "0" ]; then
+  if [ "$release_keep_platform_tags" = "0" ]; then
     for platform in $platforms; do
       platform_name=$(echo "$platform" | tr '/' '-')
-      ref="${target_image}:${build_tag}-${platform_name}"
-      cibuild_log_debug "try to delete tag ${ref}"
-      if ! regctl -v error tag delete "${ref}"; then
-        cibuild_log_err "error deleting ${ref}"
-      fi
+      cibuild_log_debug "try to delete ${target_image}:${build_tag}-${platform_name}"
+      cibuild__ci_cleanup_tag "${target_image}" "${build_tag}-${platform_name}"
     done
   fi
 
   if [ "$release_keep_tmp_tag" = "0" ]; then
     cibuild_log_debug "try to delete ${target_image}:${tmp_tag}"
-    if ! regctl -v error tag delete "${target_image}:${tmp_tag}"; then
-      cibuild_log_err "error deleting ${target_image}:${tmp_tag}"
-    fi
+    cibuild__ci_cleanup_tag "${target_image}" "${tmp_tag}"
   fi
 }
 

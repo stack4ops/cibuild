@@ -242,7 +242,7 @@ cibuild__ci_get_cosign_keyless_verify_args() {
     "${CI_SERVER_URL}"
 }
 
-cibuild__ci_cleanup_sig_tags() {
+cibuild__ci_cleanup_signatures() {
   local image="$1"
   local digest="$2"
   local sig_prefix
@@ -253,6 +253,14 @@ cibuild__ci_cleanup_sig_tags() {
   fi
   if regctl -v error tag rm "${image}:${sig_prefix}.sig" 2>/dev/null; then
     cibuild_log_info "deleted ${image}:${sig_prefix}.sig"
+  fi
+}
+
+cibuild__ci_cleanup_tag() {
+  local image="$1"
+  local tag="$2"
+  if regctl -v error tag rm "${image}:${tag}" 2>/dev/null; then
+    cibuild_log_info "deleted ${image}:${tag}"
   fi
 }
 

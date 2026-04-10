@@ -238,7 +238,7 @@ cibuild__ci_get_cosign_keyless_verify_args() {
   printf -- '--certificate-oidc-issuer=https://token.actions.githubusercontent.com\n'
 }
 
-cibuild__ci_cleanup_sig_tags() {
+cibuild__ci_cleanup_signatures() {
   local image="$1"
   local digest="$2"
   local sig_prefix
@@ -276,6 +276,45 @@ cibuild__ci_cleanup_sig_tags() {
     fi
     if regctl -v error tag rm "${image}:${sig_prefix}.sig" 2>/dev/null; then
       cibuild_log_info "deleted ${image}:${sig_prefix}.sig"
+    fi
+  fi
+}
+
+cibuild__ci_cleanup_tag() {
+  local image="$1"
+  local tag="$2"
+
+  if cibuild_is_ghcr "${image}"; then
+    local repo="${image#ghcr.io/}"
+    local owner="${repo%%/*}"
+    local package="${repo#*/}"
+
+    local versions
+    versions=$(curl -sf \
+      -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+      "https://api.github.com/users/${owner}/packages/container/${package}/versions") || {
+      cibuild_log_err "failed to fetch versions for ${package}"
+      return 1
+    }
+
+    local version_id
+    version_id=$(echo "$versions" \
+      | jq -r ".[] | select((.metadata.container.tags // [])[] | . == \"${tag}\") | .id")
+
+    if [ -n "${version_id}" ]; then
+      if curl -sf -X DELETE \
+        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+        "https://api.github.com/users/${owner}/packages/container/${package}/versions/${version_id}"; then
+        cibuild_log_info "deleted tag ${tag} version ${version_id}"
+      else
+        cibuild_log_debug "failed to delete tag ${tag} version ${version_id}"
+      fi
+    else
+      cibuild_log_debug "no version found for tag ${tag}"
+    fi
+  else
+    if regctl -v error tag rm "${image}:${tag}" 2>/dev/null; then
+      cibuild_log_info "deleted ${image}:${tag}"
     fi
   fi
 }
