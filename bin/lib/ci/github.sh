@@ -250,7 +250,7 @@ cibuild__ci_cleanup_sig_tags() {
   cibuild_log_debug "repo: ${repo}"
   cibuild_log_debug "owner: ${owner}"
   cibuild_log_debug "package: ${package}"
-  cibuild_log_debug "sig_prefix: ${package}"
+  cibuild_log_debug "sig_prefix: ${sig_prefix}"
 
   # find all versions with sig prefix and delete
   curl -sf \
@@ -258,12 +258,11 @@ cibuild__ci_cleanup_sig_tags() {
     "https://api.github.com/users/${owner}/packages/container/${package}/versions" \
     | jq -r ".[] | select((.metadata.container.tags // [])[] | startswith(\"${sig_prefix}\")) | .id" \
     | while read -r version_id; do
-        cibuild_log_debug "delete sig version ${version_id}"
-        # curl -sf -X DELETE \
-        #   -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-        #   "https://api.github.com/users/${owner}/packages/container/${package}/versions/${version_id}" \
-        #   && cibuild_log_debug "deleted sig version ${version_id}" \
-        #   || cibuild_log_debug "failed to delete sig version ${version_id}"
+        curl -sf -X DELETE \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          "https://api.github.com/users/${owner}/packages/container/${package}/versions/${version_id}" \
+          && cibuild_log_debug "deleted sig version ${version_id}" \
+          || cibuild_log_debug "failed to delete sig version ${version_id}"
       done
 }
 
