@@ -128,6 +128,10 @@ cibuild_ci_default_cache_registry() {
   printf '%s\n' "target_registry"
 }
 
+cibuild_ci_default_cache_mode() {
+  printf '%s\n' 'tag'
+}
+
 # base registry, image path and tag: are processed from Dockerfile
 
 # target image data
@@ -214,7 +218,7 @@ cibuild_ci_release_image_full() {
   printf '%s\n' "$(cibuild_ci_release_registry)/$(cibuild_ci_release_image_path):$(cibuild_ci_build_tag)"
 }
 
-cibuild__ci_get_base_cosign_annotations() {
+cibuild_ci_get_base_cosign_annotations() {
   [ -n "${CI_PROJECT_URL:-}" ] && \
     printf -- '-a\norg.opencontainers.image.source=%s\n' "${CI_PROJECT_URL}"
 
@@ -229,7 +233,7 @@ cibuild__ci_get_base_cosign_annotations() {
   #  printf -- '-a\norg.opencontainers.image.created=%s\n' "${CI_PIPELINE_CREATED_AT}"
 }
 
-cibuild__ci_get_cosign_keyless_verify_args() {
+cibuild_ci_get_cosign_keyless_verify_args() {
   if [ -z "${SIGSTORE_ID_TOKEN:-}" ]; then
     cibuild_log_err "keyless signing requires SIGSTORE_ID_TOKEN - add id_tokens.SIGSTORE_ID_TOKEN.aud=sigstore to your gitlab-ci.yml"
     # >&2
@@ -242,7 +246,7 @@ cibuild__ci_get_cosign_keyless_verify_args() {
     "${CI_SERVER_URL}"
 }
 
-cibuild__ci_cleanup_signatures() {
+cibuild_ci_cleanup_signatures() {
   local image="$1"
   local digest="$2"
   local sig_prefix
@@ -256,7 +260,7 @@ cibuild__ci_cleanup_signatures() {
   fi
 }
 
-cibuild__ci_cleanup_tag() {
+cibuild_ci_cleanup_tag() {
   local image="$1"
   local tag="$2"
   if regctl -v error tag rm "${image}:${tag}" 2>/dev/null; then

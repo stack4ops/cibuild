@@ -102,6 +102,10 @@ cibuild_ci_default_cache_registry() {
   printf '%s\n' "ci_registry"
 }
 
+cibuild_ci_default_cache_mode() {
+  printf '%s\n' 'repo'
+}
+
 cibuild_ci_image_path() {
   printf '%s\n' "${CIBUILD_CI_IMAGE_PATH:-$GITHUB_REPOSITORY}"
 }
@@ -218,7 +222,7 @@ cibuild_ci_release_image_full() {
   printf '%s\n' "$(cibuild_ci_release_registry)/$(cibuild_ci_release_image_path):$(cibuild_ci_build_tag)"
 }
 
-cibuild__ci_get_base_cosign_annotations() {
+cibuild_ci_get_base_cosign_annotations() {
   [ -n "${GITHUB_SERVER_URL:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && \
     printf -- '-a\norg.opencontainers.image.source=%s/%s\n' \
       "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}"
@@ -231,14 +235,14 @@ cibuild__ci_get_base_cosign_annotations() {
 
 }
 
-cibuild__ci_get_cosign_keyless_verify_args() {
+cibuild_ci_get_cosign_keyless_verify_args() {
   printf -- '--certificate-identity=%s/%s\n' \
     "${GITHUB_SERVER_URL}" \
     "${GITHUB_WORKFLOW_REF}"
   printf -- '--certificate-oidc-issuer=https://token.actions.githubusercontent.com\n'
 }
 
-cibuild__ci_cleanup_signatures() {
+cibuild_ci_cleanup_signatures() {
   local image="$1"
   local digest="$2"
   local sig_prefix
@@ -280,7 +284,7 @@ cibuild__ci_cleanup_signatures() {
   fi
 }
 
-cibuild__ci_cleanup_tag() {
+cibuild_ci_cleanup_tag() {
   local image="$1"
   local tag="$2"
 
@@ -288,6 +292,35 @@ cibuild__ci_cleanup_tag() {
     local repo="${image#ghcr.io/}"
     local owner="${repo%%/*}"
     local package="${repo#*/}"
+
+    case "${tag}" in
+      *-cibuild-idx)
+        # move -cibuild-idx to platform digest so it gets deleted together with platform tag
+        local platform_tag
+        platform_tag=$(curl -sf \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          "https://api.github.com/users/${owner}/packages/container/${package}/versions" \
+          | jq -r '
+            .[] | 
+            .metadata.container.tags[] | 
+            select(test("-linux-")) |
+            select(test("-cibuild-idx") | not) |
+            select(test("-cache") | not)
+          ' | head -1)
+
+        if [ -n "${platform_tag}" ]; then
+          cibuild_log_debug "moving ${tag} to ${platform_tag} version before delete"
+          local platform_digest
+          platform_digest=$(regctl -v error manifest head "${image}:${platform_tag}" 2>/dev/null) || true
+          if [ -n "${platform_digest}" ]; then
+            regctl -v error image copy "${image}@${platform_digest}" "${image}:${tag}" 2>/dev/null || true
+          fi
+        else
+          cibuild_log_debug "no platform tag found to move ${tag} to"
+        fi
+        return 0
+        ;;
+    esac
 
     local versions
     versions=$(curl -sf \
@@ -299,7 +332,8 @@ cibuild__ci_cleanup_tag() {
 
     local version_id
     version_id=$(echo "$versions" \
-      | jq -r ".[] | select((.metadata.container.tags // [])[] | . == \"${tag}\") | .id")
+      | jq -r ".[] | select((.metadata.container.tags // [])[] | . == \"${tag}\") | .id" \
+      | head -1)
 
     if [ -n "${version_id}" ]; then
       if curl -sf -X DELETE \
