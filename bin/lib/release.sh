@@ -269,19 +269,29 @@ cibuild__remove_signatures() {
   for platform in $platforms; do
     platform_name=$(echo "$platform" | tr '/' '-')
     image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}" 2>/dev/null) || true
-    #cibuild_log_debug "found platform image ${image_digest}"
     if [ -n "${image_digest:-}" ]; then
-      # see: cibuild__ci_cleanup_sig_tags in github adapter
-      fallback_tag=$(echo "${image_digest}" | sed 's/:/-/')
-      regctl -v error tag rm "${target_image}:${fallback_tag}" 2>/dev/null || true
-      regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 2>/dev/null || true
+      cibuild_log_debug "found platform image ${image_digest}"
+      if cibuild_function_exists cibuild__ci_cleanup_sig_tags; then
+        cibuild_log_debug "use cibuild__ci_cleanup_sig_tags for cleanup platform sig tag $platform"
+        cibuild__ci_cleanup_sig_tags "${target_image}" "${image_digest}"
+      else
+        cibuild_log_debug "use generic regctl method for cleanup"
+        fallback_tag=$(echo "${image_digest}" | sed 's/:/-/')
+        regctl -v error tag rm "${target_image}:${fallback_tag}" 2>/dev/null || true
+        regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 2>/dev/null || true
+      fi
     fi
   done
 
   # index sig
-  fallback_tag=$(echo "${index_digest}" | sed 's/:/-/')
-  regctl -v error tag rm "${target_image}:${fallback_tag}" 2>/dev/null || true
-  regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 2>/dev/null || true
+  if cibuild_function_exists cibuild__ci_cleanup_sig_tags; then
+    cibuild_log_debug "use cibuild__ci_cleanup_sig_tags for cleanup index sig tag"
+    cibuild__ci_cleanup_sig_tags "${target_image}" "${index_digest}"
+  else
+    fallback_tag=$(echo "${index_digest}" | sed 's/:/-/')
+    regctl -v error tag rm "${target_image}:${fallback_tag}" 2>/dev/null || true
+    regctl -v error tag rm "${target_image}:${fallback_tag}.sig" 2>/dev/null || true
+  fi
   
   cibuild_log_debug "try to remove dsse referrers for ${target_image}@${index_digest}"
 
@@ -293,9 +303,6 @@ cibuild__remove_signatures() {
         --format '{{ index .Annotations "dev.sigstore.bundle.content" }}' 2>/dev/null)
         cibuild_log_debug "found ${bundle_content}"
         if [ "${bundle_content}" = "dsse-envelope" ]; then
-          index_tag=$(echo "${index_digest}" | sed 's/:/-/')
-          cibuild_log_debug "delete cosign fallback tag: ${target_image}:${index_tag} if exists"
-          regctl -v error tag delete "${target_image}:${index_tag}" 2>/dev/null || true
           cibuild_log_debug "delete dsse manifest: ${target_image}@${ref_digest} if exists"
           regctl -v error manifest delete "${target_image}@${ref_digest}" 2>/dev/null || true
         fi
