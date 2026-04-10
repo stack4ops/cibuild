@@ -251,20 +251,32 @@ cibuild__ci_cleanup_sig_tags() {
     local package="${repo#*/}"
     
     # find all versions with sig prefix and delete
-    curl -sf \
+    local versions
+    versions=$(curl -sf \
       -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-      "https://api.github.com/users/${owner}/packages/container/${package}/versions" \
+      "https://api.github.com/users/${owner}/packages/container/${package}/versions") || {
+      cibuild_log_err "failed to fetch versions for ${package}"
+      return 1
+    }
+
+    echo "$versions" \
       | jq -r ".[] | select((.metadata.container.tags // [])[] | startswith(\"${sig_prefix}\")) | .id" \
       | while read -r version_id; do
-          curl -sf -X DELETE \
+          if curl -sf -X DELETE \
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            "https://api.github.com/users/${owner}/packages/container/${package}/versions/${version_id}" \
-            && cibuild_log_info "deleted sig version ${version_id}" \
-            || cibuild_log_debug "failed to delete sig version ${version_id}"
+            "https://api.github.com/users/${owner}/packages/container/${package}/versions/${version_id}"; then
+            cibuild_log_info "deleted sig version ${version_id}"
+          else
+            cibuild_log_debug "failed to delete sig version ${version_id}"
+          fi
         done
   else
-    regctl -v error tag rm "${target_image}:${sig_prefix}" 2>/dev/null || true
-    regctl -v error tag rm "${target_image}:${sig_prefix}.sig" 2>/dev/null || true
+    if regctl -v error tag rm "${image}:${sig_prefix}" 2>/dev/null; then
+      cibuild_log_info "deleted ${image}:${sig_prefix}"
+    fi
+    if regctl -v error tag rm "${image}:${sig_prefix}.sig" 2>/dev/null; then
+      cibuild_log_info "deleted ${image}:${sig_prefix}.sig"
+    fi
   fi
 }
 

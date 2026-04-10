@@ -251,8 +251,12 @@ cibuild__ci_cleanup_sig_tags() {
   local sig_prefix
   sig_prefix=$(echo "$digest" | sed 's/:/-/')
   cibuild_log_debug "sig_prefix: ${sig_prefix}"
-  regctl -v error tag rm "${target_image}:${sig_prefix}" 2>/dev/null || true
-  regctl -v error tag rm "${target_image}:${sig_prefix}.sig" 2>/dev/null || true
+  if regctl -v error tag rm "${image}:${sig_prefix}" 2>/dev/null; then
+    cibuild_log_info "deleted ${image}:${sig_prefix}"
+  fi
+  if regctl -v error tag rm "${image}:${sig_prefix}.sig" 2>/dev/null; then
+    cibuild_log_info "deleted ${image}:${sig_prefix}.sig"
+  fi
 }
 
 cibuild__ci_init() {

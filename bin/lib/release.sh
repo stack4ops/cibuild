@@ -325,7 +325,7 @@ cibuild__remove_signatures() {
     fi
   done
 
-  # index 
+  # index
   cibuild__delete_dsse_sig "${target_image}" "${index_digest}"
 }
 
