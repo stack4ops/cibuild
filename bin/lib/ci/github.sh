@@ -289,12 +289,31 @@ cibuild__ci_cleanup_tag() {
     local owner="${repo%%/*}"
     local package="${repo#*/}"
 
-    # tmp tags never delete
-    # pointing always to build_tag package
     case "${tag}" in
       *-tmp)
-        cibuild_log_debug "ghcr.io: skipping tmp tag delete - same version as build tag"
-        return 0
+        # move -tmp to platform digest so it gets deleted together with platform tag
+        local platform_tag
+        platform_tag=$(curl -sf \
+          -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          "https://api.github.com/users/${owner}/packages/container/${package}/versions" \
+          | jq -r '
+            .[] | 
+            .metadata.container.tags[] | 
+            select(test("-linux-")) |
+            select(test("-tmp") | not)
+          ' | head -1)
+
+        if [ -n "${platform_tag}" ]; then
+          cibuild_log_debug "moving ${tag} to ${platform_tag} version before delete"
+          local platform_digest
+          platform_digest=$(regctl -v error manifest head "${image}:${platform_tag}" 2>/dev/null) || true
+          if [ -n "${platform_digest}" ]; then
+            regctl -v error image copy "${image}@${platform_digest}" "${image}:${tag}" 2>/dev/null || true
+          fi
+        else
+          cibuild_log_debug "no platform tag found to move ${tag} to"
+        fi
+        return 0  # tmp selbst nicht löschen - fliegt mit platform tag raus
         ;;
     esac
 
@@ -308,21 +327,10 @@ cibuild__ci_cleanup_tag() {
 
     local version_id
     version_id=$(echo "$versions" \
-      | jq -r ".[] | select((.metadata.container.tags // [])[] | . == \"${tag}\") | .id \
-               | select(. != null)" \
+      | jq -r ".[] | select((.metadata.container.tags // [])[] | . == \"${tag}\") | .id" \
       | head -1)
 
     if [ -n "${version_id}" ]; then
-      # ensure digest is only referred by this tag
-      local tag_count
-      tag_count=$(echo "$versions" \
-        | jq -r ".[] | select(.id == ${version_id}) | .metadata.container.tags | length")
-      
-      if [ "${tag_count}" -gt 1 ]; then
-        cibuild_log_debug "ghcr.io: skipping delete - version ${version_id} has ${tag_count} tags"
-        return 0
-      fi
-
       if curl -sf -X DELETE \
         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
         "https://api.github.com/users/${owner}/packages/container/${package}/versions/${version_id}"; then
@@ -339,6 +347,66 @@ cibuild__ci_cleanup_tag() {
     fi
   fi
 }
+
+# cibuild__ci_cleanup_tag() {
+#   local image="$1"
+#   local tag="$2"
+
+#   if cibuild_is_ghcr "${image}"; then
+#     local repo="${image#ghcr.io/}"
+#     local owner="${repo%%/*}"
+#     local package="${repo#*/}"
+
+#     # tmp tags never delete
+#     # pointing always to build_tag package
+#     case "${tag}" in
+#       *-tmp)
+#         cibuild_log_debug "ghcr.io: skipping tmp tag delete - same version as build tag"
+#         return 0
+#         ;;
+#     esac
+
+#     local versions
+#     versions=$(curl -sf \
+#       -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+#       "https://api.github.com/users/${owner}/packages/container/${package}/versions") || {
+#       cibuild_log_err "failed to fetch versions for ${package}"
+#       return 1
+#     }
+
+#     local version_id
+#     version_id=$(echo "$versions" \
+#       | jq -r ".[] | select((.metadata.container.tags // [])[] | . == \"${tag}\") | .id \
+#                | select(. != null)" \
+#       | head -1)
+
+#     if [ -n "${version_id}" ]; then
+#       # ensure digest is only referred by this tag
+#       local tag_count
+#       tag_count=$(echo "$versions" \
+#         | jq -r ".[] | select(.id == ${version_id}) | .metadata.container.tags | length")
+      
+#       if [ "${tag_count}" -gt 1 ]; then
+#         cibuild_log_debug "ghcr.io: skipping delete - version ${version_id} has ${tag_count} tags"
+#         return 0
+#       fi
+
+#       if curl -sf -X DELETE \
+#         -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+#         "https://api.github.com/users/${owner}/packages/container/${package}/versions/${version_id}"; then
+#         cibuild_log_info "deleted tag ${tag} version ${version_id}"
+#       else
+#         cibuild_log_debug "failed to delete tag ${tag} version ${version_id}"
+#       fi
+#     else
+#       cibuild_log_debug "no version found for tag ${tag}"
+#     fi
+#   else
+#     if regctl -v error tag rm "${image}:${tag}" 2>/dev/null; then
+#       cibuild_log_info "deleted ${image}:${tag}"
+#     fi
+#   fi
+# }
 
 cibuild__ci_init() {
 
