@@ -643,17 +643,17 @@ cibuild__release_clean_tags() {
   
   local tmp_tag="${build_tag}-tmp"
 
+  if [ "$release_keep_tmp_tag" = "0" ]; then
+    cibuild_log_debug "try to delete ${target_image}:${tmp_tag}"
+    cibuild__ci_cleanup_tag "${target_image}" "${tmp_tag}"
+  fi
+
   if [ "${release_keep_platform_tags}" = "0" ]; then
     for platform in $platforms; do
       platform_name=$(echo "$platform" | tr '/' '-')
       cibuild_log_debug "try to delete ${target_image}:${build_tag}-${platform_name}"
       cibuild__ci_cleanup_tag "${target_image}" "${build_tag}-${platform_name}"
     done
-  fi
-
-  if [ "$release_keep_tmp_tag" = "0" ]; then
-    cibuild_log_debug "try to delete ${target_image}:${tmp_tag}"
-    cibuild__ci_cleanup_tag "${target_image}" "${tmp_tag}"
   fi
 }
 
