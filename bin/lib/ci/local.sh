@@ -241,7 +241,7 @@ cibuild__ci_get_base_cosign_annotations() {
 }
 
 cibuild__ci_get_cosign_keyless_verify_args() {
-  cibuild_log_err "keyless signing not supported in loacl adapter"
+  cibuild_log_err "keyless signing not supported in local adapter"
   return 1
 }
 
