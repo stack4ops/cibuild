@@ -60,8 +60,8 @@ release_cosign_signing_recursive=1
 release_cosign_verify=1
 release_cosign_signing_config=
 release_remove_old_signatures=0
-release_keep_platform_tags=1
-release_keep_idx_tag=1
+release_keep_platform_tags=0
+release_keep_idx_tag=0
 '
 
 _CIBUILD_ENV_VARS=""
