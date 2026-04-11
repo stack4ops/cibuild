@@ -181,14 +181,12 @@ cibuild__build_get_import_cache_args() {
   local arch=$1 \
         build_tag=$(cibuild_ci_build_tag) \
         _build_import_cache=$(cibuild_env_get 'build_import_cache') \
-        build_import_cache=${_build_import_cache:-$(cibuild_ci_default_cache_registry)} \
-        _build_cache_mode=$(cibuild_env_get 'build_cache_mode') \
-        build_cache_mode=${_build_cache_mode:-$(cibuild_ci_default_cache_mode)}
+        _build_cache_mode=$(cibuild_env_get 'build_cache_mode')
 
+  local build_import_cache=${_build_import_cache:-$(cibuild_ci_default_cache_registry)}
+  local build_cache_mode=${_build_cache_mode:-$(cibuild_ci_default_cache_mode)}
+  
   local cache_image=""
-
-  cibuild_log_debug "_build_cache_mode $_build_cache_mode"
-  cibuild_log_debug "build_cache_mode $build_cache_mode"
 
   case "$build_import_cache" in
     "")
@@ -225,9 +223,10 @@ cibuild__build_get_export_cache_args() {
         build_tag=$(cibuild_ci_build_tag) \
         cache_mode=$(cibuild_env_get 'build_export_cache_mode') \
         _build_export_cache=$(cibuild_env_get 'build_export_cache') \
-        build_export_cache=${_build_export_cache:-$(cibuild_ci_default_cache_registry)} \
-        _build_cache_mode=$(cibuild_env_get 'build_cache_mode') \
-        build_cache_mode=${_build_cache_mode:-$(cibuild_ci_default_cache_mode)}
+        _build_cache_mode=$(cibuild_env_get 'build_cache_mode')
+  
+  local build_export_cache=${_build_export_cache:-$(cibuild_ci_default_cache_registry)}
+  local build_cache_mode=${_build_cache_mode:-$(cibuild_ci_default_cache_mode)}
 
   local cache_image=""
   
