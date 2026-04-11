@@ -229,9 +229,6 @@ cibuild__build_get_export_cache_args() {
   local build_cache_mode=${_build_cache_mode:-$(cibuild_ci_default_cache_mode)}
 
   local cache_image=""
-  
-  cibuild_log_debug "_build_cache_mode $_build_cache_mode"
-  cibuild_log_debug "build_cache_mode $build_cache_mode"
 
   case "$build_export_cache" in
     "")
