@@ -206,7 +206,7 @@ cibuild__sign() {
     ;;
     "keyless")
       sign_args=""
-      if ! verify_args=$(cibuild__ci_get_cosign_keyless_verify_args); then
+      if ! verify_args=$(cibuild_ci_get_cosign_keyless_verify_args); then
         return 1
       fi
     ;;
@@ -305,14 +305,14 @@ cibuild__remove_signatures() {
     image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}" 2>/dev/null) || true
     if [ -n "${image_digest:-}" ]; then
       #cibuild_log_debug "found platform image ${image_digest}"
-      cibuild_log_debug "use cibuild__ci_cleanup_sig_tags for cleanup platform sig tag $platform"
-      cibuild__ci_cleanup_signatures "${target_image}" "${image_digest}"
+      cibuild_log_debug "use cibuild_ci_cleanup_sig_tags for cleanup platform sig tag $platform"
+      cibuild_ci_cleanup_signatures "${target_image}" "${image_digest}"
     fi
   done
 
   # image index
-  cibuild_log_debug "use cibuild__ci_cleanup_sig_tags for cleanup index sig tag"
-  cibuild__ci_cleanup_signatures "${target_image}" "${index_digest}"
+  cibuild_log_debug "use cibuild_ci_cleanup_sig_tags for cleanup index sig tag"
+  cibuild_ci_cleanup_signatures "${target_image}" "${index_digest}"
   
   # now check new bundle format oci 1.1
   
@@ -363,13 +363,13 @@ cibuild__release_create_index() {
     cibuild_main_err "no platform images found, cannot create index ${target_image}:${build_tag}"
   fi
 
-  local tmp_tag="${build_tag}-cibuild-idx"
+  local idx_tag="${build_tag}-cibuild-idx"
   
-  if ! regctl -v error index create "$target_image:$tmp_tag" $create_args; then
-    cibuild_main_err "error creating image index ${target_image}:${tmp_tag}"
+  if ! regctl -v error index create "$target_image:$idx_tag" $create_args; then
+    cibuild_main_err "error creating image index ${target_image}:${idx_tag}"
   fi
   
-  cibuild_log_debug "temporary image index created: ${target_image}:${tmp_tag} for $platforms"
+  cibuild_log_debug "temporary image index created: ${target_image}:${idx_tag} for $platforms"
   
   if [ "${release_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
     cibuild_log_debug "docker.io detected as target_registry set release_docker_attestation_manifest=1"
@@ -397,7 +397,7 @@ cibuild__release_create_index() {
     
     image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}")
 
-    if ! regctl -v error index add "${target_image}:${tmp_tag}" \
+    if ! regctl -v error index add "${target_image}:${idx_tag}" \
       --ref "${target_image}@${attestation_digest}" \
       --desc-platform unknown/unknown \
       --desc-annotation vnd.docker.reference.type=attestation-manifest \
@@ -407,7 +407,7 @@ cibuild__release_create_index() {
   fi
   
   # save this to internal variable, don't use build_tag anymore it is just a pointer to the final digest
-  cibuild__target_digest=$(regctl -v error manifest head "${target_image}:${tmp_tag}")
+  cibuild__target_digest=$(regctl -v error manifest head "${target_image}:${idx_tag}")
   cibuild_log_debug "new index digest: $cibuild__target_digest"
 
   # set build_tag
@@ -638,22 +638,22 @@ cibuild__release_clean_tags() {
         platforms \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         release_keep_platform_tags=$(cibuild_env_get 'release_keep_platform_tags') \
-        release_keep_tmp_tag=$(cibuild_env_get 'release_keep_tmp_tag')
+        release_keep_idx_tag=$(cibuild_env_get 'release_keep_idx_tag')
 
   platforms=$(echo "$build_platforms" | tr ',' ' ')
   
-  local tmp_tag="${build_tag}-tmp"
+  local idx_tag="${build_tag}-cibuild-idx"
 
-  if [ "$release_keep_tmp_tag" = "0" ]; then
-    cibuild_log_debug "try to delete ${target_image}:${tmp_tag}"
-    cibuild__ci_cleanup_tag "${target_image}" "${tmp_tag}"
+  if [ "$release_keep_idx_tag" = "0" ]; then
+    cibuild_log_debug "try to delete ${target_image}:${idx_tag}"
+    cibuild_ci_cleanup_tag "${target_image}" "${idx_tag}"
   fi
 
   if [ "${release_keep_platform_tags}" = "0" ]; then
     for platform in $platforms; do
       platform_name=$(echo "$platform" | tr '/' '-')
       cibuild_log_debug "try to delete ${target_image}:${build_tag}-${platform_name}"
-      cibuild__ci_cleanup_tag "${target_image}" "${build_tag}-${platform_name}"
+      cibuild_ci_cleanup_tag "${target_image}" "${build_tag}-${platform_name}"
     done
   fi
 }

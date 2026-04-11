@@ -227,7 +227,7 @@ cibuild_ci_release_image_full() {
   printf '%s\n' "$(cibuild_ci_release_registry)/$(cibuild_ci_release_image_path):$(cibuild_ci_build_tag)"
 }
 
-cibuild__ci_get_base_cosign_annotations() {
+cibuild_ci_get_base_cosign_annotations() {
   
   printf -- '-a\norg.opencontainers.image.source=%s\n' "local"
 
@@ -240,12 +240,12 @@ cibuild__ci_get_base_cosign_annotations() {
 
 }
 
-cibuild__ci_get_cosign_keyless_verify_args() {
+cibuild_ci_get_cosign_keyless_verify_args() {
   cibuild_log_err "keyless signing not supported in local adapter"
   return 1
 }
 
-cibuild__ci_cleanup_signatures() {
+cibuild_ci_cleanup_signatures() {
   local image="$1"
   local digest="$2"
   local sig_prefix
@@ -259,12 +259,16 @@ cibuild__ci_cleanup_signatures() {
   fi
 }
 
-cibuild__ci_cleanup_tag() {
+cibuild_ci_cleanup_tag() {
   local image="$1"
   local tag="$2"
   if regctl -v error tag rm "${image}:${tag}" 2>/dev/null; then
     cibuild_log_info "deleted ${image}:${tag}"
   fi
+}
+
+cibuild_ci_default_cache_mode() {
+  printf 'repo'
 }
 
 cibuild__ci_init() {

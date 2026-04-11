@@ -218,7 +218,7 @@ cibuild_ci_release_image_full() {
   printf '%s\n' "$(cibuild_ci_release_registry)/$(cibuild_ci_release_image_path):$(cibuild_ci_build_tag)"
 }
 
-cibuild__ci_get_base_cosign_annotations() {
+cibuild_ci_get_base_cosign_annotations() {
   [ -n "${GITHUB_SERVER_URL:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && \
     printf -- '-a\norg.opencontainers.image.source=%s/%s\n' \
       "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}"
@@ -231,14 +231,14 @@ cibuild__ci_get_base_cosign_annotations() {
 
 }
 
-cibuild__ci_get_cosign_keyless_verify_args() {
+cibuild_ci_get_cosign_keyless_verify_args() {
   printf -- '--certificate-identity=%s/%s\n' \
     "${GITHUB_SERVER_URL}" \
     "${GITHUB_WORKFLOW_REF}"
   printf -- '--certificate-oidc-issuer=https://token.actions.githubusercontent.com\n'
 }
 
-cibuild__ci_cleanup_signatures() {
+cibuild_ci_cleanup_signatures() {
   local image="$1"
   local digest="$2"
   local sig_prefix
@@ -280,7 +280,7 @@ cibuild__ci_cleanup_signatures() {
   fi
 }
 
-cibuild__ci_cleanup_tag() {
+cibuild_ci_cleanup_tag() {
   local image="$1"
   local tag="$2"
 
@@ -346,6 +346,10 @@ cibuild__ci_cleanup_tag() {
       cibuild_log_info "deleted ${image}:${tag}"
     fi
   fi
+}
+
+cibuild_ci_default_cache_mode() {
+  printf 'repo'
 }
 
 cibuild__ci_init() {
