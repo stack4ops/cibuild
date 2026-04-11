@@ -254,10 +254,6 @@ cibuild__build_image_buildx() {
         platform \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         build_native=$(cibuild_env_get 'build_native') \
-        build_http_proxy=$(cibuild_env_get 'build_http_proxy') \
-        build_https_proxy=$(cibuild_env_get 'build_https_proxy') \
-        build_no_proxy=$(cibuild_env_get 'build_no_proxy') \
-        build_all=$(cibuild_env_get 'build_all_proxy') \
         build_opts=$(cibuild_env_get 'build_opts') \
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
@@ -298,10 +294,6 @@ cibuild__build_image_buildx() {
 
     cibuild_log_debug "build_args: $build_args"
     cibuild_log_debug "build_opts: $build_opts"
-    cibuild_log_debug "build_http_proxy: $build_http_proxy"
-    cibuild_log_debug "build_https_proxy: $build_https_proxy"
-    cibuild_log_debug "build_no_proxy: $build_no_proxy"
-    cibuild_log_debug "build_all_proxy: $build_all_proxy"
     
     . "${CIBUILD_LIB_PATH}/build_args.sh"
 
@@ -317,10 +309,6 @@ cibuild__build_image_buildx() {
       ${sbom_args:-} \
       ${provenance_args:-} \
       ${build_opts:-} \
-      --build-arg "HTTP_PROXY=${build_http_proxy}" \
-      --build-arg "HTTPS_PROXY=${build_https_proxy}" \
-      --build-arg "NO_PROXY=${build_no_proxy}" \
-      --build-arg "ALL_PROXY=${build_all_proxy}" \
       ${build_arguments} \
       ${no_cache} \
       ${cache} \
@@ -339,10 +327,6 @@ cibuild__build_image_buildctl() {
         platform \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         build_native=$(cibuild_env_get 'build_native') \
-        build_http_proxy=$(cibuild_env_get 'build_http_proxy') \
-        build_https_proxy=$(cibuild_env_get 'build_https_proxy') \
-        build_no_proxy=$(cibuild_env_get 'build_no_proxy') \
-        build_all=$(cibuild_env_get 'build_all_proxy') \
         build_opts=$(cibuild_env_get 'build_opts') \
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
@@ -411,10 +395,6 @@ cibuild__build_image_buildctl() {
 
     cibuild_log_debug "build_args: $build_args"
     cibuild_log_debug "build_opts: $build_opts"
-    cibuild_log_debug "build_http_proxy: $build_http_proxy"
-    cibuild_log_debug "build_https_proxy: $build_https_proxy"
-    cibuild_log_debug "build_no_proxy: $build_no_proxy"
-    cibuild_log_debug "build_all_proxy: $build_all_proxy"
     
     . "${CIBUILD_LIB_PATH}/build_args.sh"
     
@@ -434,10 +414,6 @@ cibuild__build_image_buildctl() {
       ${sbom_args:-} \
       ${provenance_args:-} \
       ${build_opts:-} \
-      --opt build-arg:HTTP_PROXY=${build_http_proxy} \
-      --opt build-arg:HTTPS_PROXY=${build_https_proxy} \
-      --opt build-arg:NO_PROXY=${build_no_proxy} \
-      --opt build-arg:ALL_PROXY=${build_all_proxy} \
       ${build_args:-} \
       ${no_cache:-} \
       ${cache:-} \
@@ -454,10 +430,6 @@ cibuild__build_image_kaniko() {
         platform \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         build_native=$(cibuild_env_get 'build_native') \
-        build_http_proxy=$(cibuild_env_get 'build_http_proxy') \
-        build_https_proxy=$(cibuild_env_get 'build_https_proxy') \
-        build_no_proxy=$(cibuild_env_get 'build_no_proxy') \
-        build_all=$(cibuild_env_get 'build_all_proxy') \
         build_opts=$(cibuild_env_get 'build_opts') \
         build_args=$(cibuild__build_get_build_args) \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
@@ -480,10 +452,6 @@ cibuild__build_image_kaniko() {
     cibuild_log_debug "platform_name: $platform_name"
     cibuild_log_debug "build_args: $build_args"
     cibuild_log_debug "build_opts: $build_opts"
-    cibuild_log_debug "build_http_proxy: $build_http_proxy"
-    cibuild_log_debug "build_https_proxy: $build_https_proxy"
-    cibuild_log_debug "build_no_proxy: $build_no_proxy"
-    cibuild_log_debug "build_all_proxy: $build_all_proxy"
 
     . "${CIBUILD_LIB_PATH}/build_args.sh"
 
@@ -503,10 +471,6 @@ cibuild__build_image_kaniko() {
       ${cache_args} \
       --custom-platform $platform \
       --build-arg TARGETARCH="${platform##*/}" \
-      --build-arg HTTP_PROXY="${build_http_proxy}" \
-      --build-arg HTTPS_PROXY="${build_https_proxy}" \
-      --build-arg NO_PROXY="${build_no_proxy}" \
-      --build-arg ALL_PROXY="${build_all_proxy}" \
       ${build_args} \
       ${build_opts} \
       "$@"; then
