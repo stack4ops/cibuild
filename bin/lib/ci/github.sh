@@ -304,7 +304,8 @@ cibuild_ci_cleanup_tag() {
             .[] | 
             .metadata.container.tags[] | 
             select(test("-linux-")) |
-            select(test("-cibuild-idx") | not)
+            select(test("-cibuild-idx") | not) |
+            select(test("-cache") | not)
           ' | head -1)
 
         if [ -n "${platform_tag}" ]; then
