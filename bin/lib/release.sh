@@ -363,7 +363,8 @@ cibuild__release_create_index() {
     cibuild_main_err "no platform images found, cannot create index ${target_image}:${build_tag}"
   fi
 
-  local tmp_tag="${build_tag}-tmp"
+  local tmp_tag="${build_tag}-cibuild-idx"
+  
   if ! regctl -v error index create "$target_image:$tmp_tag" $create_args; then
     cibuild_main_err "error creating image index ${target_image}:${tmp_tag}"
   fi
