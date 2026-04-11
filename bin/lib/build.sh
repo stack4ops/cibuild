@@ -181,21 +181,39 @@ cibuild__build_get_import_cache_args() {
   local arch=$1 \
         build_tag=$(cibuild_ci_build_tag) \
         _build_import_cache=$(cibuild_env_get 'build_import_cache') \
-        build_import_cache=${_build_import_cache:-$(cibuild_ci_default_cache_registry)}
+        build_import_cache=${_build_import_cache:-$(cibuild_ci_default_cache_registry)} \
+        _build_cache_mode=$(cibuild_env_get 'build_cache_mode') \
+        build_cache_mode=${_build_cache_mode:-$(cibuild_ci_default_cache_mode)}
+
+  local cache_image=""
 
   case "$build_import_cache" in
     "")
       printf '%s\n' ""
+      return 0
       ;;
     ci_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=$(cibuild_ci_image)-cache:${build_tag}-${arch}"
+      cache_image=$(cibuild_ci_image)
       ;;
     target_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=$(cibuild_ci_target_image)-cache:${build_tag}-${arch}"
+      cache_image=$(cibuild_ci_target_image)
       ;;
     *)
       printf '%s\n' "$(cibuild__build_get_cache_from_opt) ${build_import_cache}"
+      return 0
       ;;
+    esac
+
+    case "$build_cache_mode" in
+      repo)
+        printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=${cache_image}-cache:${build_tag}-${arch}"    
+      ;;
+      tag)
+        printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=${cache_image}:${build_tag}-${arch}-cache"
+      ;;
+      *)
+        cibuild_log_err "unsupported build_cache_mode $build_cache_mode"
+        exit 1
     esac
 }
 
@@ -204,22 +222,41 @@ cibuild__build_get_export_cache_args() {
         build_tag=$(cibuild_ci_build_tag) \
         cache_mode=$(cibuild_env_get 'build_export_cache_mode') \
         _build_export_cache=$(cibuild_env_get 'build_export_cache') \
-        build_export_cache=${_build_export_cache:-$(cibuild_ci_default_cache_registry)}
+        build_export_cache=${_build_export_cache:-$(cibuild_ci_default_cache_registry)} \
+        _build_cache_mode=$(cibuild_env_get 'build_cache_mode') \
+        build_cache_mode=${_build_cache_mode:-$(cibuild_ci_default_cache_mode)}
+
+  local cache_image=""
 
   case "$build_export_cache" in
     "")
       printf '%s\n' ""
+      return 0
       ;;
     ci_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=$(cibuild_ci_image)-cache:${build_tag}-${arch},mode=${cache_mode}"
+      cache_image=$(cibuild_ci_image)
       ;;
     target_registry)
-      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=$(cibuild_ci_target_image)-cache:${build_tag}-${arch},mode=${cache_mode}"
+      cache_image=$(cibuild_ci_target_image)
       ;;
     *)
       printf '%s\n' "$(cibuild__build_get_cache_to_opt) ${build_export_cache}"
+      return 0
       ;;
-    esac
+  esac
+
+  case "$build_cache_mode" in
+    repo)
+      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=${cache_image}-cache:${build_tag}-${arch},mode=${cache_mode}"
+      ;;
+    tag)
+      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=${cache_image}:${build_tag}-${arch}-cache,mode=${cache_mode}"
+      ;;
+    *)
+      cibuild_log_err "unsupported build_cache_mode $build_cache_mode"
+      exit 1
+      ;;
+  esac
 }
 
 cibuild__build_get_sbom_args() {

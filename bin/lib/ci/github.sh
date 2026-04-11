@@ -102,6 +102,10 @@ cibuild_ci_default_cache_registry() {
   printf '%s\n' "ci_registry"
 }
 
+cibuild_ci_default_cache_mode() {
+  printf '%s\n' 'repo'
+}
+
 cibuild_ci_image_path() {
   printf '%s\n' "${CIBUILD_CI_IMAGE_PATH:-$GITHUB_REPOSITORY}"
 }
@@ -346,10 +350,6 @@ cibuild_ci_cleanup_tag() {
       cibuild_log_info "deleted ${image}:${tag}"
     fi
   fi
-}
-
-cibuild_ci_default_cache_mode() {
-  printf 'repo'
 }
 
 cibuild__ci_init() {

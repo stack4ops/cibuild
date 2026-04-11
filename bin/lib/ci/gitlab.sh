@@ -128,6 +128,10 @@ cibuild_ci_default_cache_registry() {
   printf '%s\n' "target_registry"
 }
 
+cibuild_ci_default_cache_mode() {
+  printf '%s\n' 'tag'
+}
+
 # base registry, image path and tag: are processed from Dockerfile
 
 # target image data
@@ -262,10 +266,6 @@ cibuild_ci_cleanup_tag() {
   if regctl -v error tag rm "${image}:${tag}" 2>/dev/null; then
     cibuild_log_info "deleted ${image}:${tag}"
   fi
-}
-
-cibuild_ci_default_cache_mode() {
-  printf 'tag'
 }
 
 cibuild__ci_init() {

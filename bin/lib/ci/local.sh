@@ -169,6 +169,10 @@ cibuild_ci_default_cache_registry() {
   printf '%s\n' "target_registry"
 }
 
+cibuild_ci_default_cache_mode() {
+  printf '%s\n' 'repo'
+}
+
 cibuild_ci_target_image_path() {
   printf '%s\n' "${CIBUILD_TARGET_IMAGE_PATH:-$(cibuild__get_project_path)}"
 }
@@ -265,10 +269,6 @@ cibuild_ci_cleanup_tag() {
   if regctl -v error tag rm "${image}:${tag}" 2>/dev/null; then
     cibuild_log_info "deleted ${image}:${tag}"
   fi
-}
-
-cibuild_ci_default_cache_mode() {
-  printf 'repo'
 }
 
 cibuild__ci_init() {
