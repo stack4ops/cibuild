@@ -40,6 +40,8 @@ cibuild -r <command>
 
 CI platform detection is automatic (GitLab CI, GitHub Actions, local). Each platform has an adapter that maps native CI variables to cibuild's internal interface.
 
+To explore all build modes locally or to develop cibuild itself, the `installer/` directory provides a complete self-contained lab environment — see [`installer/README.md`](installer/README.md).
+
 ---
 
 ## Runs and Pipeline Jobs
