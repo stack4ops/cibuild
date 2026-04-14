@@ -7,16 +7,16 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Pipeline Stages](#pipeline-stages)
+2. [Runs and Pipeline Jobs](#runs-and-pipeline-jobs)
 3. [Configuration](#configuration)
    - [Config Files](#config-files)
    - [Environment Variable Naming](#environment-variable-naming)
 4. [Environment Variable Reference](#environment-variable-reference)
    - [Global](#global)
-   - [Check Stage](#check-stage)
-   - [Build Stage](#build-stage)
-   - [Test Stage](#test-stage)
-   - [Release Stage](#release-stage)
+   - [Check Run](#check-run)
+   - [Build Run](#build-run)
+   - [Test Run](#test-run)
+   - [Release Run](#release-run)
 5. [Dynamic Variables (Secrets, Build Args, Cosign Annotations)](#dynamic-variables)
 6. [CI Adapter Variables](#ci-adapter-variables)
 7. [Tag Templates](#tag-templates)
@@ -29,7 +29,7 @@
 
 ## Overview
 
-`cibuild` is a single-binary CI tool for building, testing, releasing and signing OCI container images. It is written in POSIX shell and runs inside a container image provided by the cibuilder project.
+`cibuild` is a single-binary CI tool for building, testing, and releasing OCI container images. It is written in POSIX shell and runs inside a container image provided by the cibuilder project.
 
 The tool is invoked as:
 
@@ -42,16 +42,44 @@ CI platform detection is automatic (GitLab CI, GitHub Actions, local). Each plat
 
 ---
 
-## Pipeline Stages
+## Runs and Pipeline Jobs
 
-| Stage | Description |
-|-------|-------------|
+cibuild has four runs that can be invoked individually or all at once:
+
+| Run | Description |
+|-----|-------------|
 | `check` | Compares base image layers of the current build against the last built image. Cancels the pipeline if nothing changed (skips unnecessary rebuilds). Only runs on scheduled or manually triggered pipelines. |
 | `build` | Builds per-platform OCI images and pushes them to the target registry. Supports `buildctl` (default), `buildx`, and `kaniko`. |
 | `test` | Runs a test script and/or JSON-defined assertions against the freshly built image using Docker or Kubernetes. |
 | `release` | Assembles a clean multi-platform OCI image index from the per-platform images, optionally adds Docker attestation manifests, signs with cosign, copies additional tags, and mirrors to other registries. |
 
-Each stage can be individually enabled or disabled and supports `pre_script` / `post_script` hooks.
+Each run can be individually enabled or disabled and supports `pre_script` / `post_script` hooks.
+
+### Single job vs. split jobs
+
+The key design decision is whether to run everything in **one CI job** or to split runs across **multiple pipeline jobs**.
+
+**`-r all` — single job (recommended default)**
+
+```sh
+cibuild -r all
+```
+
+All four runs execute sequentially inside a single CI job and a single cibuilder container. The main advantage is that the cibuilder image only needs to be pulled once, and no intermediate artifacts need to be transferred between jobs. This is the simplest setup and works well for the majority of projects.
+
+**Split runs — multiple CI jobs**
+
+```sh
+# job 1        job 2       job 3
+cibuild -r build   cibuild -r test   cibuild -r release
+```
+
+Splitting runs into separate pipeline jobs is useful when:
+
+- **Native multi-platform builds** — building for `linux/amd64` and `linux/arm64` natively (with `CIBUILD_BUILD_NATIVE=1`) requires one dedicated runner per architecture. Each runner executes its own build job, and the release job assembles the resulting platform images into the final index. Testing likewise needs to run on each native runner.
+- **Visibility and control** — separate jobs make the pipeline graph clearer, allow retrying individual steps, and let you attach environment-specific variables or secrets to specific jobs only.
+
+When splitting, each job still runs `check`, `build`, `test`, or `release` individually. Use the `CIBUILD_*_ENABLED` variables to disable runs that are not relevant to a given job (e.g. set `CIBUILD_RELEASE_ENABLED=0` on build jobs and `CIBUILD_BUILD_ENABLED=0` on the release job).
 
 ---
 
@@ -91,9 +119,9 @@ Variables set directly in the environment always take precedence over values in 
 
 ---
 
-### Check Stage
+### Check Run
 
-The check stage compares the layer digests of the base image (extracted from the last `FROM` line of the Containerfile) against the layers of the previously built target image. If the base image has not changed, the pipeline is canceled to save resources.
+The check run compares the layer digests of the base image (extracted from the last `FROM` line of the Containerfile) against the layers of the previously built target image. If the base image has not changed, the pipeline is canceled to save resources.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -109,9 +137,9 @@ Additional variable used by the check stage (not in `_CIBUILD_DEFAULTS`, set ext
 
 ---
 
-### Build Stage
+### Build Run
 
-The build stage builds one OCI image per platform and pushes the result to the target registry. The build tag for each platform image follows the pattern `<build_tag>-<platform_name>` (e.g. `main-linux-amd64`).
+The build run builds one OCI image per platform and pushes the result to the target registry. The build tag for each platform image follows the pattern `<build_tag>-<platform_name>` (e.g. `main-linux-amd64`).
 
 #### General Build Settings
 
@@ -161,9 +189,9 @@ The build stage builds one OCI image per platform and pushes the result to the t
 
 ---
 
-### Test Stage
+### Test Run
 
-The test stage runs the freshly built image through user-defined tests. Two test modes are supported: a custom shell script and a declarative JSON assertion file.
+The test run runs the freshly built image through user-defined tests. Two test modes are supported: a custom shell script and a declarative JSON assertion file.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -179,9 +207,9 @@ The test stage runs the freshly built image through user-defined tests. Two test
 
 ---
 
-### Release Stage
+### Release Run
 
-The release stage assembles the final multi-platform OCI image index from the per-platform build artifacts, signs it with cosign, and copies it to additional tags and optional mirror registries.
+The release run assembles the final multi-platform OCI image index from the per-platform build artifacts, signs it with cosign, and copies it to additional tags and optional mirror registries.
 
 #### General Release Settings
 
