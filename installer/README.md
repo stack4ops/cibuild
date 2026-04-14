@@ -29,7 +29,23 @@ This means every supported build mode is available out of the box:
 | `buildx` — `dockercontainer` driver | DinD | ✓ |
 | `buildx` — `remote` driver | BuildKit in k3d (`buildkitr`) | ✓ |
 | `buildx` — `kubernetes` driver | k3d + `buildkitk` service account | ✓ |
-| `kaniko` | DinD (runs kaniko executor directly) | ✓ |
+| `kaniko` | runs directly in cibuilder as root, no DinD or k3d needed | ✓ |
+
+> **Using kaniko** requires switching the cibuilder container from rootless to root mode. In `.env`, comment out the default block and uncomment the kaniko block:
+>
+> ```sh
+> # default (all other build clients)
+> #CIBUILDER_ROOTLESS_KIT=1
+> #CIBUILDER_USER="1000:$(id -g)"
+> #CIBUILDER_PRIVILEGED=1
+>
+> # for kaniko
+> CIBUILDER_ROOTLESS_KIT=0
+> CIBUILDER_USER="0:$(id -g)"
+> CIBUILDER_PRIVILEGED=0
+> ```
+>
+> Kaniko executes the `/kaniko/executor` binary directly inside the cibuilder container and pushes the result straight to the registry — no Docker daemon and no Kubernetes cluster are involved. `CIBUILDER_PRIVILEGED=0` is intentional: kaniko runs as root but does not need a privileged container.
 
 The test stage works with both `TEST_BACKEND=docker` (via DinD) and `TEST_BACKEND=kubernetes` (via the `teststage` service account in k3d).
 
