@@ -1,3 +1,9 @@
+![Version](https://img.shields.io/badge/version-0.8.0-blue)
+![License](https://img.shields.io/badge/license-Apache%202.0-green)
+![Shell](https://img.shields.io/badge/shell-POSIX%20sh-lightgrey?logo=gnu-bash)
+![GitLab CI](https://img.shields.io/badge/GitLab%20CI-supported-FC6D26?logo=gitlab)
+![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-supported-2088FF?logo=github-actions)
+
 # cibuild — Documentation
 
 > Version 0.8.0 · POSIX shell · GitLab CI · GitHub Actions · Local
