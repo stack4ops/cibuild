@@ -103,7 +103,9 @@ CIBUILD_BUILD_PLATFORMS  →  build_platforms
 CIBUILD_RELEASE_ENABLED  →  release_enabled
 ```
 
-Variables set directly in the environment always take precedence over values in config files, which take precedence over the built-in defaults documented below.
+The precedence order is **config file > environment > built-in defaults** — config files win over environment variables. This is intentionally the reverse of the usual convention.
+
+The reasoning: GitLab and GitHub inject many CI variables as environment variables, including global defaults set at the group or organization level. By letting the repo's config file take precedence, the effective configuration is always visible in the repository itself. Global or infrastructure-level defaults can be set as environment variables where they are out of the way and don't clutter the repo, while any repo-specific override in `cibuild.env` reliably takes effect regardless of what the CI environment provides.
 
 ---
 
