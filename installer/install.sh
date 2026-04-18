@@ -8,34 +8,7 @@ set -eu
 
 ORIG_PWD=$(pwd)
 
-# globals
-# API_PORT=6445
-# LOCAL_LIBS_MOUNT -v PATH_TO_CIBUILD_REPO/cibuild/bin:${HOME}/bin
-
-find_free_port() {
-  min=1001
-  max=9000
-
-  find_free_port_tries=0
-  find_free_port_max_tries=100
-
-  local_host=127.0.0.1
-
-  while :; do
-    free_port=$(( (RANDOM % (max - min + 1)) + min ))
-    nc -z -w 1 "${local_host}" "${free_port}" || break
-
-    find_free_port_tries=$((find_free_port_tries + 1))
-    if [ $find_free_port_tries -eq $find_free_port_max_tries ]; then
-      echo "no free port found"
-      exit 1
-    fi
-  done
-
-  echo $free_port
-}
-
-# certs and ressources for buildkit remote
+# certs and resources for buildkit remote
 create_buildkitr_namespace() {
   
   ./kc.sh create namespace buildkitr
@@ -70,13 +43,12 @@ create_buildkitr_namespace() {
   ./kc.sh apply -f ./buildkit/client-certs.yaml -n buildkitr
   ./kc.sh apply -f ./buildkit/buildkitr-deploy.yaml -n buildkitr
   
-  #cp -r ./buildkit/certs/client ~/.config/cibuild/
   sed -i "s/^CIBUILD_BUILD_BUILDKIT_CLIENT_CA=.*/CIBUILD_BUILD_BUILDKIT_CLIENT_CA=$(base64 -w 0 ./buildkit/certs/client/ca.pem)/g" .env
   sed -i "s/^CIBUILD_BUILD_BUILDKIT_CLIENT_CERT=.*/CIBUILD_BUILD_BUILDKIT_CLIENT_CERT=$(base64 -w 0 ./buildkit/certs/client/cert.pem)/g" .env
   sed -i "s/^CIBUILD_BUILD_BUILDKIT_CLIENT_KEY=.*/CIBUILD_BUILD_BUILDKIT_CLIENT_KEY=$(base64 -w 0 ./buildkit/certs/client/key.pem)/g" .env
 }
 
-# serviceaccount and restricted kubeconfig for kubernetes driver: namespace buildkitk(ubernetes)
+# service account and restricted kubeconfig for kubernetes driver: namespace buildkitk(ubernetes)
 create_buildkitk_namespace() {
   
   if [ -f ./buildkit/kubeconfig ]; then
@@ -89,8 +61,8 @@ create_buildkitk_namespace() {
   K8S_CA=$(./kc.sh config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
   # API endpoint only usable from within cibuilder-net!
   K8S_SERVER="https://k3d-cibuilder-serverlb:6443"
-  # for testing from host you have to change the server entry in ./buildkit/kubeconfig:
-  #SERVER="https://127.0.0.1:6445"
+  # for testing from host change the server entry in ./buildkit/kubeconfig:
+  # K8S_SERVER="https://127.0.0.1:6445"
   USER_TOKEN=$(./kc.sh create token buildkit-sa --namespace buildkitk --duration=8760h)
 
   cp ./buildkit/kubeconfig.template ./buildkit/kubeconfig
@@ -112,11 +84,10 @@ create_teststage_namespace() {
   fi
 
   # create kubeconfig for teststage service account
-  
   K8S_CA=$(./kc.sh config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
   # API endpoint from within cibuilder-net
   K8S_SERVER="https://k3d-cibuilder-serverlb:6443"
-  #SERVER="https://127.0.0.1:6445"
+  # for testing from host: K8S_SERVER="https://127.0.0.1:6445"
   USER_TOKEN=$(./kc.sh create token teststage-sa --namespace teststage --duration=8760h)
 
   cp ./teststage/kubeconfig.template ./teststage/kubeconfig
@@ -130,9 +101,6 @@ create_teststage_namespace() {
 }
 
 create_cluster() {
-  if [ "${FIND_FREE_PORTS}" = "1" ]; then
-    API_PORT=$(find_free_port)
-  fi
   k3d cluster create \
     "${COMPOSE_PROJECT_NAME}" \
     --network "${COMPOSE_PROJECT_NAME}-net" \
@@ -151,7 +119,6 @@ create_cluster() {
     rm ./teststage/kubeconfig
   fi 
   k3d kubeconfig get "${COMPOSE_PROJECT_NAME}" > kubeconfig
-  #export KUBECONFIG=./kubeconfig
 }
 
 prepare() {
@@ -159,7 +126,7 @@ prepare() {
   script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
   cd ${script_dir}
 
-  # remove command cache
+  # clear command cache
   hash -r 2>/dev/null || true
 
   arch=$(uname -m)
@@ -181,21 +148,32 @@ prepare() {
           ;;
   esac
   echo "os_arch: $os_arch"
+
   if [ ! -f ./.env ]; then
     cp ./.env.template .env
-    echo "Copied .env.template to .env. Please customize .env variables to your needs."
-    echo "In most cases .env works out of the box"
+    echo "Copied .env.template to .env. Please customize .env if needed."
+    echo "In most cases .env works out of the box."
     echo "For libs development set USE_REPO_LIBS=1"
   fi
+
   path=$(pwd)
   libpath="${path%/*}/bin"
   sed -i "s|^LIB_PATH=.*|LIB_PATH=${libpath}|g" .env
   . ./.env
+
+  # generate Attic token secret if NIX_ENABLED and not yet set
+  if [ "${NIX_ENABLED:-0}" = "1" ]; then
+    if ! grep -q "^ATTIC_TOKEN_SECRET=.\+" .env; then
+      ATTIC_TOKEN_SECRET=$(openssl rand -hex 32)
+      sed -i "s|^ATTIC_TOKEN_SECRET=.*|ATTIC_TOKEN_SECRET=${ATTIC_TOKEN_SECRET}|g" .env
+      echo "Generated ATTIC_TOKEN_SECRET"
+    fi
+  fi
 }
 
 install() {
   if [ ! -d ~/.local/bin ]; then
-    echo "create ~/.local/bin"
+    echo "Creating ~/.local/bin"
     mkdir -p ~/.local/bin
   fi
 
@@ -203,43 +181,76 @@ install() {
   chmod 755 ~/.local/bin/cibuild
 
   if ! command -v cibuild >/dev/null 2>&1; then
-    echo "please add ~/.local/bin/ to your PATH variable."
+    echo "Please add ~/.local/bin/ to your PATH variable."
     exit 1
   fi
 
   if [ ! -d ~/.config/cibuild ]; then
-    echo "create ~/.config/cibuild"
+    echo "Creating ~/.config/cibuild"
     mkdir -p ~/.config/cibuild
   fi
 
-  if [ "${FIND_FREE_PORTS}" = "1" ]; then
-    if ! command -v nc >/dev/null 2>&1; then
-      echo "please install nc (netcat)"
-      exit 1
-    fi
-    p1=$(find_free_port)
-    p2=$p1
-    while [ "$p2" -eq "$p1" ]; do
-      p2=$(find_free_port)
-    done
-    sed -i "s/^REGISTRY_PORT=.*/REGISTRY_PORT=$p1/g" .env
-    sed -i "s/^REGISTRY_BROWSER_PORT=.*/REGISTRY_BROWSER_PORT=$p2/g" .env
-    . ./.env
-  fi
-
-  # pull and start container
+  # pull and start containers
   docker pull      ${CIBUILDER_IMAGE}:${CIBUILDER_REF}
   docker volume    inspect ${COMPOSE_PROJECT_NAME}-registry-data > /dev/null 2>&1 || docker volume  create ${COMPOSE_PROJECT_NAME}-registry-data
   docker network   inspect ${COMPOSE_PROJECT_NAME}-net           > /dev/null 2>&1 || docker network create ${COMPOSE_PROJECT_NAME}-net
   
   if [ "${DIND_ENABLED}" = "1" ]; then
-    docker volume inspect ${COMPOSE_PROJECT_NAME}-dind-data > /dev/null 2>&1 || docker volume  create ${COMPOSE_PROJECT_NAME}-dind-data
+    docker volume inspect ${COMPOSE_PROJECT_NAME}-dind-data > /dev/null 2>&1 || docker volume create ${COMPOSE_PROJECT_NAME}-dind-data
     docker pull docker.io/library/docker:dind
     docker compose -f docker-compose.dind.yaml down
     docker compose -f docker-compose.dind.yaml up -d
   else
-    docker compose  -f docker-compose.min.yaml down
+    docker compose -f docker-compose.min.yaml down
     docker compose -f docker-compose.min.yaml up -d
+  fi
+
+  # Attic Nix Binary Cache — independent of DIND
+  if [ "${NIX_ENABLED:-0}" = "1" ]; then
+    echo "==> Setting up Attic Nix Binary Cache..."
+
+    docker volume inspect ${COMPOSE_PROJECT_NAME}-attic-storage > /dev/null 2>&1 || docker volume create ${COMPOSE_PROJECT_NAME}-attic-storage
+    docker volume inspect ${COMPOSE_PROJECT_NAME}-attic-db      > /dev/null 2>&1 || docker volume create ${COMPOSE_PROJECT_NAME}-attic-db
+
+    docker pull ghcr.io/zhaofengli/attic:latest
+    docker compose -f docker-compose.attic.yaml down
+    docker compose -f docker-compose.attic.yaml up -d
+
+    # wait for healthy
+    echo "    waiting for attic..."
+    ATTIC_CONTAINER="${COMPOSE_PROJECT_NAME}-attic"
+    tries=0
+    while [ $tries -lt 30 ]; do
+      status=$(docker inspect "${ATTIC_CONTAINER}" --format='{{.State.Health.Status}}' 2>/dev/null || echo "starting")
+      [ "$status" = "healthy" ] && break
+      tries=$((tries + 1))
+      sleep 2
+    done
+
+    # generate token if not already set
+    if ! grep -q "^CIBUILD_NIX_CACHE_TOKEN=" .env || grep -q "^CIBUILD_NIX_CACHE_TOKEN=$" .env; then
+      ATTIC_TOKEN=$(docker exec "${ATTIC_CONTAINER}" \
+        atticd make-token \
+          --sub "cibuilder" \
+          --validity "52w" \
+          --push "nixpkgs" \
+          --pull "nixpkgs" \
+          --create-cache "nixpkgs" \
+          --configure-cache "nixpkgs" \
+        2>/dev/null)
+
+      # create cache bucket
+      docker exec "${ATTIC_CONTAINER}" \
+        attic login local http://localhost:8080 "${ATTIC_TOKEN}" > /dev/null 2>&1 || true
+      docker exec "${ATTIC_CONTAINER}" \
+        attic cache create nixpkgs > /dev/null 2>&1 || true
+
+      sed -i "s|^CIBUILD_NIX_CACHE_TOKEN=.*|CIBUILD_NIX_CACHE_TOKEN=${ATTIC_TOKEN}|g" .env
+      echo "    token generated and written to .env"
+    fi
+
+    echo "    Attic ready at http://127.0.0.1:${ATTIC_PORT} (host)"
+    echo "    Attic ready at http://${COMPOSE_PROJECT_NAME}-attic:8080 (within cibuilder-net)"
   fi
 
   if ! command -v k3d >/dev/null 2>&1; then
@@ -256,17 +267,17 @@ install() {
   ./kc.sh cluster-info
 
   if ! ./kc.sh get namespace teststage >/dev/null 2>&1; then
-    echo "namespace teststage not exists, creating ..."
+    echo "namespace teststage not found, creating..."
     create_teststage_namespace
   fi
 
   if ! ./kc.sh get namespace buildkitr >/dev/null 2>&1; then
-    echo "namespace buildkitr not exists, creating ..."
+    echo "namespace buildkitr not found, creating..."
     create_buildkitr_namespace
   fi
 
   if ! ./kc.sh get namespace buildkitk >/dev/null 2>&1; then
-    echo "namespace buildkitk not exists, creating ..."
+    echo "namespace buildkitk not found, creating..."
     create_buildkitk_namespace
   fi
 
@@ -281,26 +292,25 @@ install() {
   fi
 
   if [ ! -f "signing/codesign.key" ] || [ ! -f "signing/codesign.pub" ]; then
-      export COSIGN_PASSWORD="" && ./cosign generate-key-pair
-      mv cosign.key ./signing/
-      mv cosign.pub ./signing/
-      sed -i "s/^CIBUILD_RELEASE_COSIGN_PRIVATE_KEY=.*/CIBUILD_RELEASE_COSIGN_PRIVATE_KEY=$(base64 -w 0 ./signing/cosign.key)/g" .env
-      sed -i "s/^CIBUILD_RELEASE_COSIGN_PUBLIC_KEY=.*/CIBUILD_RELEASE_COSIGN_PUBLIC_KEY=$(base64 -w 0 ./signing/cosign.pub)/g" .env
+    export COSIGN_PASSWORD="" && ./cosign generate-key-pair
+    mv cosign.key ./signing/
+    mv cosign.pub ./signing/
+    sed -i "s/^CIBUILD_RELEASE_COSIGN_PRIVATE_KEY=.*/CIBUILD_RELEASE_COSIGN_PRIVATE_KEY=$(base64 -w 0 ./signing/cosign.key)/g" .env
+    sed -i "s/^CIBUILD_RELEASE_COSIGN_PUBLIC_KEY=.*/CIBUILD_RELEASE_COSIGN_PUBLIC_KEY=$(base64 -w 0 ./signing/cosign.pub)/g" .env
   fi
-  
 }
 
 finish() {
   cp .env ~/.config/cibuild/.env
   chmod 755 ~/.config/cibuild/.env
   echo ""
-  echo ""
   echo "----------------------"
   echo "installed successfully!"
   echo ""
-  #echo "registry can be accessed: localhost:${REGISTRY_PORT}"
-  echo "registry-ui can be accessed in your browser: http://localhost:${REGISTRY_BROWSER_PORT}"
-  echo ""
+  echo "Registry UI: http://localhost:${REGISTRY_BROWSER_PORT}"
+  if [ "${NIX_ENABLED:-0}" = "1" ]; then
+    echo "Attic cache: http://127.0.0.1:${ATTIC_PORT}"
+  fi
   echo ""
   cd ${ORIG_PWD}
 }
@@ -308,4 +318,3 @@ finish() {
 prepare
 install
 finish
-

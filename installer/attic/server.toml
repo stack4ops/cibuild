@@ -1,0 +1,20 @@
+[database]
+url = "sqlite:///attic/data/attic.db?mode=rwc"
+
+[storage]
+type = "local"
+path = "/attic/storage"
+
+[chunking]
+# good for Nix NAR-Files
+min-size = 16384
+avg-size = 65536
+max-size = 262144
+
+[compression]
+type = "zstd"
+
+[garbage-collection]
+# no garbage collection in lab
+interval = "12 hours"
+default-retention-period = "6 months"
