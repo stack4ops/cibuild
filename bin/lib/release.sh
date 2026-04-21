@@ -31,6 +31,57 @@ cibuild__get_docker_attestation_digest() {
   printf '%s\n' "$attestation"
 }
 
+cibuild__release_provenance() {
+  local platform_name=$1 \
+        image_ref=$2 \
+        build_provenance=$(cibuild_env_get 'build_provenance') \
+        build_client=$(cibuild_env_get 'build_client') \
+        output_dir="${CIBUILD_OUTPUT_DIR:-.}"
+
+  # provenance only available from buildkit-based builds
+  # nix: tbd (ZenDIS alignment pending)
+  # kaniko: no provenance support
+  case "${build_client}" in
+    buildctl|buildx) ;;
+    *)
+      cibuild_log_info "provenance skipped: not supported for build_client=${build_client}"
+      return 0
+      ;;
+  esac
+
+  [ "${build_provenance}" = "1" ] || return 0
+
+  # find attestation manifest digest via regctl
+  local ref_digest
+  ref_digest=$(regctl -v error manifest head "${image_ref}") || {
+    cibuild_log_err "provenance: cannot get manifest digest for ${image_ref}"
+    return 0
+  }
+
+  local attestation_digest
+  attestation_digest=$(regctl -v error manifest get "${image_ref}@${ref_digest}" \
+    --format '{{range .Manifests}}{{if eq (index .Annotations "vnd.docker.reference.type") "attestation-manifest"}}{{.Digest}}{{end}}{{end}}') || {
+    cibuild_log_err "provenance: cannot find attestation manifest for ${image_ref}"
+    return 0
+  }
+
+  if [ -z "${attestation_digest}" ]; then
+    cibuild_log_info "provenance: no attestation manifest found for ${platform_name} (buildkit provenance may be disabled)"
+    return 0
+  fi
+
+  cibuild_log_info "extracting provenance via regctl for ${platform_name}"
+
+  # extract the provenance layer from the attestation manifest
+  regctl artifact get "${image_ref}@${attestation_digest}" \
+    > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || {
+    cibuild_log_err "provenance extraction failed for ${platform_name} (non-fatal)"
+    return 0
+  }
+
+  cibuild_log_info "provenance written to ${output_dir}/provenance-${platform_name}.slsa.json"
+}
+
 cibuild__release_copy_tag() {
   local copy_to_tag="$1" \
         target_image=${2:-$(cibuild_ci_target_image)} \
@@ -591,10 +642,76 @@ cibuild__release_mirrors() {
   done
 }
 
+cibuild__release_sbom() {
+  local platform_name=$1 \
+        image_ref=$2 \
+        release_sbom_formats=$(cibuild_env_get 'release_sbom_formats') \
+        output_dir="${CIBUILD_OUTPUT_DIR:-.}" \
+        fmt \
+        sbom_ext
+
+  if ! command -v trivy >/dev/null 2>&1; then
+    cibuild_log_err "trivy not found — skipping SBOM (non-fatal)"
+    return 0
+  fi
+
+  # SBOM only — no vulnerability scan, no DB download needed
+  # loop over comma-separated formats: spdx-json,cyclonedx-json
+  for fmt in $(echo "${release_sbom_formats}" | tr ',' ' '); do
+    case "${fmt}" in
+      spdx-json)      sbom_ext="spdx.json" ;;
+      cyclonedx)      sbom_ext="cdx.json"  ;;
+      cyclonedx-json) sbom_ext="cdx.json"  ;;
+      spdx)           sbom_ext="spdx"      ;;
+      *)              sbom_ext="sbom.json" ;;
+    esac
+
+    cibuild_log_info "generating SBOM via trivy (${fmt}) for ${platform_name}"
+
+    trivy image \
+      --format "${fmt}" \
+      --scanners "" \
+      --output "${output_dir}/sbom-${platform_name}.${sbom_ext}" \
+      --quiet \
+      "${image_ref}" || \
+      cibuild_log_err "trivy SBOM (${fmt}) failed (non-fatal)"
+
+    cibuild_log_info "SBOM written to ${output_dir}/sbom-${platform_name}.${sbom_ext}"
+  done
+}
+
+cibuild__release_vuln() {
+  local platform_name=$1 \
+        image_ref=$2 \
+        release_vuln=$(cibuild_env_get 'release_vuln') \
+        release_vuln_format=$(cibuild_env_get 'release_vuln_format') \
+        output_dir="${CIBUILD_OUTPUT_DIR:-.}"
+
+  [ "${release_vuln}" = "1" ] || return 0
+
+  if ! command -v trivy >/dev/null 2>&1; then
+    cibuild_log_err "trivy not found — skipping vulnerability scan (non-fatal)"
+    return 0
+  fi
+
+  cibuild_log_info "running vulnerability scan via trivy for ${platform_name}"
+
+  trivy image \
+    --format "${release_vuln_format:-json}" \
+    --scanners vuln \
+    --output "${output_dir}/vuln-${platform_name}.json" \
+    --quiet \
+    "${image_ref}" || \
+    cibuild_log_err "trivy vulnerability scan failed (non-fatal)"
+
+  cibuild_log_info "vulnerability report written to ${output_dir}/vuln-${platform_name}.json"
+}
+
 cibuild__release_write_summary() {
   local target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         build_platforms=$(cibuild_env_get 'build_platforms') \
+        release_sbom=$(cibuild_env_get 'release_sbom') \
         output_dir="${CIBUILD_OUTPUT_DIR:-.}" \
         release_cosign_signing_mode=$(cibuild_env_get 'release_cosign_signing_mode')
 
@@ -616,13 +733,11 @@ cibuild__release_write_summary() {
   for platform in $(echo "$build_platforms" | tr ',' ' '); do
     platform_name=$(echo "$platform" | tr '/' '-')
     ref="${target_image}:${build_tag}-${platform_name}"
-    docker buildx imagetools inspect "${ref}" \
-      --format '{{json .SBOM.SPDX}}' \
-      > "${output_dir}/sbom-${platform_name}.spdx.json" 2>/dev/null || true
-    
-    docker buildx imagetools inspect "${ref}" \
-      --format '{{json .Provenance.SLSA}}' \
-      > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || true
+    if [ "${release_sbom}" = "1" ]; then
+      cibuild__release_sbom "${platform_name}" "${ref}"
+    fi
+    cibuild__release_vuln "${platform_name}" "${ref}"
+    cibuild__release_provenance "${platform_name}" "${ref}"
   done
 
   if [ "${release_cosign_signing_mode}" = "keyless" ]; then
