@@ -59,9 +59,9 @@ if [ "${CIBUILDER_PRIVILEGED:-1}" = "0" ]; then
 fi
 
 if [ "${USE_REPO_LIBS}" = "1" ]; then
-  LOCAL_LIBS_MOUNT="-v ${LIB_PATH}:/home/user/bin"
+  LOCAL_LIBS_MOUNT="-v ${LIB_PATH}:/home/cibuilder/bin"
   if [ "${USE_REPO_ENTRYPOINT}" = "1" ]; then
-    LOCAL_ENTRYPOINT="--entrypoint=/home/user/bin/cibuild_entrypoint.sh"
+    LOCAL_ENTRYPOINT="--entrypoint=/home/cibuilder/bin/cibuild_entrypoint.sh"
   fi
   if [ "${USE_REPO_BUILDCTL_DAEMONLESS}" = "1" ]; then
     LOCAL_BUILDCTL_DAEMONLESS="-v ${LIB_PATH}/buildctl-daemonless.sh:/usr/bin/buildctl-daemonless.sh"

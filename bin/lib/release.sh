@@ -351,7 +351,8 @@ cibuild__release_create_index() {
   for platform in $platforms; do
     platform_name=$(echo "$platform" | tr '/' '-')
     ref="${target_image}:${build_tag}-${platform_name}"
-    if regctl -v error manifest head "$ref" >/dev/null 2>&1; then
+    # >/dev/null 2>&1
+    if regctl -v error manifest head "$ref"; then
       create_args="$create_args --ref $ref --platform $platform"
       found=1
     else
@@ -594,7 +595,7 @@ cibuild__release_write_summary() {
   local target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         build_platforms=$(cibuild_env_get 'build_platforms') \
-        output_dir="${CIBUILD_OUTPUT_DIR}" \
+        output_dir="${CIBUILD_OUTPUT_DIR:-.}" \
         release_cosign_signing_mode=$(cibuild_env_get 'release_cosign_signing_mode')
 
   digests_json="{}"

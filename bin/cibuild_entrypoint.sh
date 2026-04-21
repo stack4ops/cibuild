@@ -3,7 +3,7 @@
 set -eu
 
 PROJECT_DIR="${CI_PROJECT_DIR:-$(pwd)}"
-export DOCKER_CONFIG="${DOCKER_CONFIG:-/home/user/.docker}"
+export DOCKER_CONFIG="${DOCKER_CONFIG:-/home/cibuilder/.docker}"
 
 # only dynamic cibuild loading libs if not locked
 if [ ! -d "/tmp/cibuilder.locked" ]; then
@@ -14,10 +14,10 @@ if [ ! -d "/tmp/cibuilder.locked" ]; then
         echo "using CIBUILDER_BIN_URL: ${CIBUILDER_BIN_URL}"
         echo "using CIBUILDER_BIN_REF: ${CIBUILDER_BIN_REF}"
 
-        cd /home/user
+        cd /home/cibuilder
 
         if [ -d "bin" ]; then
-            echo "delete existing /home/user/bin folder"
+            echo "delete existing /home/cibuilder/bin folder"
             rm -r "bin"
         fi
         curl -L -s "${CIBUILDER_BIN_URL}/${CIBUILDER_BIN_REF}.tar.gz" | tar xzf - --strip-components=1 "cibuild-${CIBUILDER_BIN_REF}/bin"

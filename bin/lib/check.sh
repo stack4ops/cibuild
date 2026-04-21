@@ -83,11 +83,19 @@ cibuild__check_base_image() {
 
 cibuild_check_run() {
   local check_enabled=$(cibuild_env_get 'check_enabled') \
+        build_client=$(cibuild_env_get 'build_client') \
         base_image_check_ret \
         build_force=$(cibuild_env_get 'build_force')
 
   if [ "${check_enabled:?}" != "1" ]; then
     cibuild_log_info "check run skipped"
+    return
+  fi
+
+  # nix backend: check run is based on flake.lock diffs, not image layer diffs
+  # skip the default layer-based check — use renovate or nix flake update instead
+  if [ "${build_client}" = "nix" ]; then
+    cibuild_log_info "check run skipped: nix backend uses flake.lock for update detection"
     return
   fi
 

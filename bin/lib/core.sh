@@ -36,7 +36,8 @@ cibuild_core_mask_kv_if_secret() {
 }
 
 cibuild__core_get_base_image() {
-  
+  local build_client=$(cibuild_env_get 'build_client')
+
   _CIBUILD_CORE_CONTAINER_FILE=$(cibuild_env_get "container_file")
 
   if [ -z "$_CIBUILD_CORE_CONTAINER_FILE" ]; then
@@ -52,7 +53,19 @@ cibuild__core_get_base_image() {
   fi
 
   if ! [ -f "${_CIBUILD_CORE_CONTAINER_FILE}" ]; then
+    # nix backend: flake.nix replaces Containerfile — no containerfile required
+    if [ "${build_client}" = "nix" ] && [ -f "flake.nix" ]; then
+      cibuild_log_info "no containerfile found — using flake.nix (nix backend)"
+      _CIBUILD_CORE_CONTAINER_FILE="flake.nix"
+      return 0
+    fi
     cibuild_main_err "no containerfile found"
+  fi
+
+  # nix backend with flake.nix: skip FROM line parsing
+  if [ "${build_client}" = "nix" ]; then
+    cibuild_log_info "nix backend: flake.nix found — skipping FROM line parsing"
+    return 0
   fi
 
   _CIBUILD_CORE_BASE_REGISTRY=$(cibuild_env_get "base_registry")

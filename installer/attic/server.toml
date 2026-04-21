@@ -1,3 +1,10 @@
+# Attic Server Configuration — Lab Setup
+
+listen = "[::]:8080"
+
+# empty = allow all (ok for lab)
+allowed-hosts = []
+
 [database]
 url = "sqlite:///attic/data/attic.db?mode=rwc"
 
@@ -6,15 +13,14 @@ type = "local"
 path = "/attic/storage"
 
 [chunking]
-# good for Nix NAR-Files
-min-size = 16384
-avg-size = 65536
-max-size = 262144
+nar-size-threshold = 65536  # 64 KiB
+min-size = 16384             # 16 KiB
+avg-size = 65536             # 64 KiB
+max-size = 262144            # 256 KiB
 
 [compression]
 type = "zstd"
 
 [garbage-collection]
-# no garbage collection in lab
 interval = "12 hours"
 default-retention-period = "6 months"

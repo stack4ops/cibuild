@@ -77,6 +77,13 @@ if [ $purge -eq 1 ]; then
     docker volume rm cibuilder-dind-data
   fi
 
+  docker volume rm cibuilder-registry-data
+
+  if [ "${NIX_ENABLED}" = "1" ]; then
+    docker volume rm cibuilder-attic-storage
+    docker volume rm cibuilder-attic-db
+  fi
+
   echo "if you want to update kubectl on next installation remove the binary manually"
 
   echo "delete cosign private and public key"

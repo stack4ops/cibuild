@@ -31,6 +31,8 @@ build_export_cache=
 build_export_cache_mode=max
 build_import_cache=
 build_sbom=1
+build_sbom_backend=trivy
+build_sbom_format=spdx-json
 build_provenance=1
 build_provenance_mode=max
 build_buildx_driver=dockercontainer
@@ -62,6 +64,10 @@ release_cosign_signing_config=
 release_remove_old_signatures=1
 release_keep_platform_tags=0
 release_keep_idx_tag=0
+nix_flake_attr=default
+nix_cache_url=
+nix_cache_token=
+nix_sandbox=
 '
 
 _CIBUILD_ENV_VARS=""

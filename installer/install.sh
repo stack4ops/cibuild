@@ -229,16 +229,18 @@ install() {
 
     # generate token if not already set
     if ! grep -q "^CIBUILD_NIX_CACHE_TOKEN=" .env || grep -q "^CIBUILD_NIX_CACHE_TOKEN=$" .env; then
+      echo "    create CIBUILD_NIX_CACHE_TOKEN..."
       ATTIC_TOKEN=$(docker exec "${ATTIC_CONTAINER}" \
-        atticd make-token \
+          atticadm make-token \
+          --config /attic/server.toml \
           --sub "cibuilder" \
           --validity "52w" \
           --push "nixpkgs" \
           --pull "nixpkgs" \
           --create-cache "nixpkgs" \
           --configure-cache "nixpkgs" \
-        2>/dev/null)
-
+          2>/dev/null)
+      
       # create cache bucket
       docker exec "${ATTIC_CONTAINER}" \
         attic login local http://localhost:8080 "${ATTIC_TOKEN}" > /dev/null 2>&1 || true
@@ -246,7 +248,9 @@ install() {
         attic cache create nixpkgs > /dev/null 2>&1 || true
 
       sed -i "s|^CIBUILD_NIX_CACHE_TOKEN=.*|CIBUILD_NIX_CACHE_TOKEN=${ATTIC_TOKEN}|g" .env
-      echo "    token generated and written to .env"
+      # write cache URL — internal cibuilder-net address for cibuilder container
+      sed -i "s|^CIBUILD_NIX_CACHE_URL=.*|CIBUILD_NIX_CACHE_URL=http://${COMPOSE_PROJECT_NAME}-attic:8080/nixpkgs|g" .env
+      echo "    token and cache URL written to .env"
     fi
 
     echo "    Attic ready at http://127.0.0.1:${ATTIC_PORT} (host)"
