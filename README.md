@@ -35,7 +35,7 @@
 
 ## Overview
 
-`cibuild` is a single-binary CI tool for building, testing, and releasing OCI container images. It is written in POSIX shell and runs inside a container image provided by the [cibuilder](https://github.com/stack4ops/cibuilder) project.
+`cibuild` is a CI tool for building, testing, and releasing OCI container images. It is written in POSIX shell and runs inside a container image provided by the [cibuilder](https://github.com/stack4ops/cibuilder) project.
 
 The tool is invoked as:
 
