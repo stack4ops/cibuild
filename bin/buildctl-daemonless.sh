@@ -30,7 +30,7 @@ tmp=$(mktemp -d /tmp/buildctl-daemonless.XXXXXX)
 trap "cleanup" EXIT
 
 startBuildkitd() {
-    addr=unix://$XDG_RUNTIME_DIR/buildkit/buildkitd.sock
+    addr=unix://${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/buildkit/buildkitd.sock
     helper=
     if [ -n "${ROOTLESSKIT_STATE_DIR:-}" ]; then
         printf '%s\n' "already inside rootlesskit - never start it again"
