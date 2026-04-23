@@ -749,6 +749,13 @@ cibuild__release_write_summary() {
 
   cibuild_log_info "release summary written to ${output_dir}"
   ls -lat "${output_dir}"
+
+  # gitlab only: upload artifacts to package registry
+  # enabled via CIBUILD_RELEASE_UPLOAD_SUPPLY_CHAIN_ARTIFACTS=package
+  if cibuild_function_exists cibuild_ci_upload_supply_chain_artifacts; then
+    cibuild_ci_upload_supply_chain_artifacts || true
+  fi
+
 }
 
 cibuild__release_clean_tags() {

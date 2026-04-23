@@ -268,6 +268,38 @@ cibuild_ci_cleanup_tag() {
   fi
 }
 
+cibuild_ci_upload_supply_chain_artifacts() {
+  local output_dir="${CIBUILD_OUTPUT_DIR:-.}" \
+        upload_mode
+
+  upload_mode=$(cibuild_env_get 'release_upload_supply_chain_artifacts' 2>/dev/null || true)
+
+  [ "${upload_mode}" = "package" ] || return 0
+
+  [ -n "${CI_JOB_TOKEN:-}" ] || {
+    cibuild_log_err "CI_JOB_TOKEN not set — cannot upload supply chain artifacts"
+    return 1
+  }
+
+  [ -n "${CI_API_V4_URL:-}" ] || {
+    cibuild_log_err "CI_API_V4_URL not set — cannot upload supply chain artifacts"
+    return 1
+  }
+
+  cibuild_log_info "uploading supply chain artifacts to GitLab Package Registry"
+  cibuild_log_info "package: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/supply-chain/${CI_COMMIT_REF_NAME}/"
+
+  for file in sbom-linux-amd64.spdx.json sbom-linux-amd64.cdx.json sbom-linux-arm64.spdx.json sbom-linux-arm64.cdx.json vuln-linux-amd64.json vuln-linux-arm64.json provenance-linux-amd64.slsa.json provenance-linux-arm64.slsa.json digests.json cert.json; do
+
+    [ -f "${output_dir}/${file}" ] || continue
+
+    cibuild_log_info "uploading ${file}"
+    curl --silent --fail --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file "${output_dir}/${file}" "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/supply-chain/${CI_COMMIT_REF_NAME}/${file}" || cibuild_log_debug "upload of ${file} failed (non-fatal)"
+  done
+
+  cibuild_log_info "supply chain artifacts upload done"
+}
+
 cibuild__ci_init() {
 
   cibuild_log_info "init ci: $(cibuild_ci_type)"

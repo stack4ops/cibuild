@@ -51,6 +51,7 @@ release_sbom=1
 release_sbom_formats=spdx-json,cyclonedx
 release_vuln=0
 release_vuln_format=json
+release_upload_supply_chain_artifacts=package
 release_docker_attestation_autodetect=1
 release_docker_attestation_manifest=0
 release_minor_tag_paging_limit=10000
