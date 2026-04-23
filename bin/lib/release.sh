@@ -715,6 +715,9 @@ cibuild__release_write_summary() {
         output_dir="${CIBUILD_OUTPUT_DIR:-.}" \
         release_cosign_signing_mode=$(cibuild_env_get 'release_cosign_signing_mode')
 
+  # ensure output dir exists
+  mkdir -p "${output_dir}"
+
   digests_json="{}"
   for platform in $(echo "$build_platforms" | tr ',' ' '); do
     platform_name=$(echo "$platform" | tr '/' '-')
