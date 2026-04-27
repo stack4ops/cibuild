@@ -7,7 +7,7 @@ _CIBUILD_ENV_LOADED=1
 
 # ---- Defaults (Go: var DefaultEnv = …) ----
 _CIBUILD_DEFAULTS='
-version=0.8.0
+version=0.9.0
 pipeline_env=
 docker_host=tcp://docker:2375
 check_enabled=0
