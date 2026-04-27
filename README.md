@@ -6,7 +6,7 @@
 
 # cibuild — Documentation
 
-> Version 0.8.0 · POSIX shell · GitLab CI · GitHub Actions · Local
+> Version 0.9.0 · POSIX shell · GitLab CI · GitHub Actions · Local
 
 ---
 
@@ -141,7 +141,7 @@ The reasoning: GitLab and GitHub inject many CI variables as environment variabl
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CIBUILD_VERSION` | `0.8.0` | cibuild version (read-only, informational) |
+| `CIBUILD_VERSION` | `0.9.0` | cibuild version (read-only, informational) |
 | `CIBUILD_PIPELINE_ENV` | *(auto-detected)* | Force a specific CI adapter: `gitlab`, `github`, or `local`. |
 | `CIBUILD_DOCKER_HOST` | `tcp://docker:2375` | Docker daemon address used by build and test stages when a Docker socket is required. |
 
@@ -300,6 +300,12 @@ cert.json                         # cosign keyless certificate
 | `CIBUILD_RELEASE_COSIGN_PRIVATE_KEY` | *(required for key mode)* | Base64-encoded cosign private key. |
 | `CIBUILD_RELEASE_COSIGN_PUBLIC_KEY` | *(optional for key mode)* | Base64-encoded cosign public key. Falls back to `cosign.pub` in the repo root. |
 | `CIBUILD_RELEASE_REMOVE_OLD_SIGNATURES` | `1` | Remove previously stored signatures before signing. |
+
+#### Supply Chain Artifact Upload
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CIBUILD_RELEASE_UPLOAD_SUPPLY_CHAIN_ARTIFACTS` | *(empty)* | Set to `package` to upload SBOM, provenance, CVE report and digests to the CI platform's artifact store. Currently supported: `package` → GitLab Generic Package Registry. |
 
 #### Cleanup
 
