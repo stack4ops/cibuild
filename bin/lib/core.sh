@@ -391,10 +391,7 @@ cibuild_is_docker() {
   esac
 }
 
-cibuild_core_init() {
-  [ "${_CIBUILD_CORE_INIT_DONE:-}" = "1" ] && return
-  _CIBUILD_CORE_INIT_DONE=1
-
+cibuild_base_init() {
   cibuild_env_init
   cibuild_log_init
   cibuild_env_get_vars | while IFS= read -r kv; do
@@ -403,6 +400,15 @@ cibuild_core_init() {
       cibuild_log_dump "$line"
     fi
   done
+}
+
+cibuild_core_init() {
+  [ "${_CIBUILD_CORE_INIT_DONE:-}" = "1" ] && return
+  _CIBUILD_CORE_INIT_DONE=1
+
+  # minimum env initialzation
+  cibuild_base_init
+
   # from Dockerfile|Containerfile
   cibuild__core_get_base_image
   cibuild_log_debug "base image: $(cibuild_core_base_image_full)"

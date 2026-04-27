@@ -65,7 +65,7 @@ done
 case "$CIBUILD_RUN_CMD" in
   update)
     # update run needs no CI init — no git repo, no registry context required
-    cibuild_log_init
+    cibuild_base_init
     cibuild_log_info "Running update..."
     cibuild_update_run
     ;;
