@@ -212,8 +212,8 @@ cibuild__test_assert_response_docker() {
 
   local port_accessible=0
   local i=1
-  while [ $i -le 15 ]; do
-    if nc -z "$_host" "$_test_id" 2>/dev/null; then
+  while [ $i -le $test_run_timeout ]; do
+    if nc -z -w 1 "$_host" "$_test_id" 2>/dev/null; then
       port_accessible=1
       break
     fi
@@ -271,7 +271,7 @@ cibuild__test_assert_response_kubernetes() {
 
   local i=1
   while [ $i -le $test_run_timeout ]; do
-    if nc -z "$_host" "$_test_id" 2>/dev/null; then
+    if nc -z -w 1 "$_host" "$_test_id" 2>/dev/null; then
       break
     fi
     sleep 1
