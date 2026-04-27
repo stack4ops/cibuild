@@ -28,6 +28,11 @@ fi
 # return to repo
 cd "$PROJECT_DIR"
 
+# ensure output dir exists if set
+if [ -n "${CIBUILD_OUTPUT_DIR:-}" ]; then
+    mkdir -p "${CIBUILD_OUTPUT_DIR}"
+fi
+
 # set generic default BUILDKITD_FLAGS working mostly everywhere
 export BUILDKITD_FLAGS="${BUILDKITD_FLAGS:--oci-worker-no-process-sandbox}"
 
