@@ -116,7 +116,7 @@ cibuild__env_detect_ci() {
 
 }
 
-cibuild__env_apply_vars() {
+cibuild_env_apply_vars() {
   _CIBUILD_ENV_VARS=
   
   while IFS= read -r line; do
@@ -185,5 +185,5 @@ cibuild_env_init() {
   [ "${_CIBUILD_ENV_INIT_DONE:-}" = "1" ] && return
   _CIBUILD_ENV_INIT_DONE=1
   cibuild__env_detect_ci
-  cibuild__env_apply_vars
+  cibuild_env_apply_vars
 }

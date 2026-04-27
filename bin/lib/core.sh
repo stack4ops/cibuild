@@ -392,14 +392,8 @@ cibuild_is_docker() {
 }
 
 cibuild_base_init() {
-  cibuild_env_init
+  cibuild__env_apply_vars
   cibuild_log_init
-  cibuild_env_get_vars | while IFS= read -r kv; do
-    if [ -n "$kv" ]; then
-      line="$(cibuild_core_mask_kv_if_secret "$kv")"
-      cibuild_log_dump "$line"
-    fi
-  done
 }
 
 cibuild_core_init() {
