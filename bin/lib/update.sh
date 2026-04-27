@@ -21,13 +21,9 @@ cibuild__update_trivy_db() {
 
   local cache_dir="${HOME}/.cache/trivy"
 
-  cibuild_log_info "updating trivy vulnerability DB -> ${cache_dir}"
-  trivy image --download-db-only --cache-dir "${cache_dir}"
+  cibuild_log_info "updating trivy vulnerability DB → ${cache_dir}"
+  trivy --quiet image --download-db-only --cache-dir "${cache_dir}"
   cibuild_log_info "trivy DB update done"
-
-  cibuild_log_info "updating trivy Java DB -> ${cache_dir}"
-  trivy image --download-java-db-only --cache-dir "${cache_dir}" || \
-    cibuild_log_info "trivy Java DB update skipped (non-fatal)"
 }
 
 # ---------- RUN ----------
