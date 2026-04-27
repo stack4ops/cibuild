@@ -392,7 +392,7 @@ cibuild_is_docker() {
 }
 
 cibuild_base_init() {
-  cibuild__env_apply_vars
+  cibuild_env_apply_vars
   cibuild_log_init
 }
 
