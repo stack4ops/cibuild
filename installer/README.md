@@ -32,6 +32,7 @@ Every supported build mode is available out of the box:
 | `buildx` — `kubernetes` | `build-buildx` | k3d + `buildkitk` service account | ✓ |
 | `kaniko` | `build-kaniko` | runs as root in cibuilder, no DinD needed | ✓ |
 | `nix` | `build-nix` | nix + optional Attic cache | ✓ |
+| `update` | `update` | scheduled trivy DB + cache updates | ✓ |
 
 > **Using `build-kaniko`** — kaniko runs as root. In `.env`:
 >
@@ -106,6 +107,7 @@ Or build a single target:
 
 ```sh
 ./build-local.sh release
+./build-local.sh update
 ./build-local.sh build-nix
 ```
 
@@ -142,7 +144,7 @@ CIBUILDER_REF=all    # or the specific run variant: build-buildctl, release, etc
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CIBUILDER_IMAGE` | `localhost/cibuilder` | cibuilder image to use |
-| `CIBUILDER_REF` | `all` | Image tag — use a specific run variant or `all` for lab |
+| `CIBUILDER_REF` | `all` | Image tag — use a specific run variant or `all` for lab. Use `update` for scheduled cache updates. |
 | `DIND_ENABLED` | `1` | Start Docker-in-Docker. Set to `0` for registry-only. |
 | `NIX_ENABLED` | `1` | Start Attic Nix binary cache. |
 | `ATTIC_PORT` | `5002` | Host port for Attic. |
@@ -155,6 +157,7 @@ CIBUILDER_REF=all    # or the specific run variant: build-buildctl, release, etc
 | `CIBUILDER_LOCKED` | `1` | Block pre/post and test script execution. Set to `0` to allow. |
 | `CIBUILDER_ROOTLESS_KIT` | `1` | Run with rootlesskit (required for buildctl daemonless). |
 | `CIBUILD_LOG_LEVEL` | `3` | Log verbosity in the lab defaults to `3` (dump). |
+| `TRIVY_CACHE_VOLUME` | *(optional)* | Mount a named Docker volume to `/home/cibuilder/.cache/trivy` to persist the trivy vulnerability DB across runs. Example: `cibuilder-trivy-cache`. |
 
 ---
 

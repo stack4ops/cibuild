@@ -41,7 +41,8 @@ export BUILDKITD_FLAGS="${BUILDKITD_FLAGS:--oci-worker-no-process-sandbox}"
 exec_cmd() {
     if [ "${CIBUILDER_ROOTLESS_KIT:-1}" = "1" ]; then
         echo "running in rootlesskit"
-        rootlesskit -- /bin/sh -c "cibuild -r $CIBUILD_RUN_CMD"
+        rootlesskit \
+            -- /bin/sh -c "cibuild -r $CIBUILD_RUN_CMD"
     else
         echo "running without rootlesskit"
         cibuild -r $CIBUILD_RUN_CMD
@@ -53,6 +54,7 @@ case "$CIBUILD_RUN_CMD" in
   build)    exec_cmd ;;
   test)     exec_cmd ;;
   release)  exec_cmd ;;
+  update)   exec_cmd ;;
   all)      exec_cmd ;;
   *)
     echo "unsupported CIBUILD_RUN_CMD: $CIBUILD_RUN_CMD"
