@@ -39,7 +39,7 @@ export BUILDKITD_FLAGS="${BUILDKITD_FLAGS:--oci-worker-no-process-sandbox}"
 : "${CIBUILD_RUN_CMD:?missing CIBUILD_RUN_CMD}"
 
 exec_cmd() {
-    if [ "${CIBUILDER_ROOTLESS_KIT:-1}" = "1" ]; then
+    if [ "${CIBUILDER_ROOTLESS_KIT:-0}" = "1" ]; then
         echo "running in rootlesskit"
         rootlesskit \
             -- /bin/sh -c "cibuild -r $CIBUILD_RUN_CMD"

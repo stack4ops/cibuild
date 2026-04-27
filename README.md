@@ -65,6 +65,8 @@ cibuild has four runs that can be invoked individually or all at once:
 
 Each run can be individually enabled or disabled and supports `pre_script` / `post_script` hooks.
 
+For simple setups, `-r all` runs all four steps sequentially in a single job — no artifact transfer between jobs, minimal runner configuration. Split runs are only needed for native multi-arch builds or job-level isolation.
+
 ### cibuilder Image Variants
 
 Each cibuild run has a matching cibuilder image variant with `CIBUILD_RUN_CMD` hardcoded — no configuration needed in CI:
@@ -104,14 +106,16 @@ For local development and testing, `cibuilder:all` combines all variants and acc
 cibuild -r all
 ```
 
-All four runs execute sequentially inside a single CI job. No intermediate artifacts need to be transferred between jobs. This is the simplest setup and works well for the majority of projects.
+All four runs execute sequentially inside a single CI job. No intermediate artifacts need to be transferred between jobs. This is the simplest setup and works well for the majority of projects — including production CI pipelines where native multi-arch builds or job-level isolation are not required.
 
 **Split runs — multiple CI jobs**
 
 Splitting is useful when:
 
 - **Native multi-platform builds** — `CIBUILD_BUILD_NATIVE=1` requires one runner per architecture. Each runner runs its own build job; the release job assembles the index.
+- **Different build backends** — e.g. `build-nix` on one runner, `build-buildctl` on another.
 - **Visibility and control** — separate jobs allow retrying individual steps and attaching environment-specific secrets to specific jobs only.
+- **DinD isolation** — `test-docker` requires a Docker-in-Docker service that you may not want running during build or release.
 
 Use `CIBUILD_*_ENABLED` variables to disable irrelevant runs per job (e.g. `CIBUILD_RELEASE_ENABLED=0` on build jobs).
 

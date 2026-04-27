@@ -17,8 +17,6 @@ cibuild_main_err() {
   exit 1
 }
 
-cibuild_core_init
-
 CIBUILD_VERSION="0.9.0"
 
 # Usage / help
@@ -65,6 +63,19 @@ done
 
 # Dispatch commands (Cobra-like)
 case "$CIBUILD_RUN_CMD" in
+  update)
+    # update run needs no CI init — no git repo, no registry context required
+    cibuild_log_init
+    cibuild_log_info "Running update..."
+    cibuild_update_run
+    ;;
+  *)
+    # all other runs need full CI init (git, registry, ci adapter, base image)
+    cibuild_core_init
+    ;;
+esac
+
+case "$CIBUILD_RUN_CMD" in
   check)
     cibuild_log_info "Running check..."
     cibuild_check_run
@@ -82,8 +93,7 @@ case "$CIBUILD_RUN_CMD" in
     cibuild_release_run
     ;;
   update)
-    cibuild_log_info "Running update..."
-    cibuild_update_run
+    # already handled above
     ;;
   all)
     cibuild_log_info "All runs..."
