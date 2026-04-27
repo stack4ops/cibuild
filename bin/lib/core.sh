@@ -400,9 +400,14 @@ cibuild_core_init() {
   [ "${_CIBUILD_CORE_INIT_DONE:-}" = "1" ] && return
   _CIBUILD_CORE_INIT_DONE=1
 
-  # minimum env initialzation
-  cibuild_base_init
-
+  cibuild_env_init
+  cibuild_log_init
+  cibuild_env_get_vars | while IFS= read -r kv; do
+    if [ -n "$kv" ]; then
+      line="$(cibuild_core_mask_kv_if_secret "$kv")"
+      cibuild_log_dump "$line"
+    fi
+  done
   # from Dockerfile|Containerfile
   cibuild__core_get_base_image
   cibuild_log_debug "base image: $(cibuild_core_base_image_full)"
