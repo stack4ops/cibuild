@@ -53,7 +53,7 @@ To explore all build modes locally or to develop cibuild itself, the `installer/
 
 ## Runs and Pipeline Jobs
 
-cibuild has four runs that can be invoked individually or all at once:
+cibuild has five runs that can be invoked individually or all at once:
 
 | Run | cibuilder Image | Description |
 |-----|-----------------|-------------|
@@ -65,7 +65,7 @@ cibuild has four runs that can be invoked individually or all at once:
 
 Each run can be individually enabled or disabled and supports `pre_script` / `post_script` hooks.
 
-For simple setups, `-r all` runs all four steps sequentially in a single job — no artifact transfer between jobs, minimal runner configuration. Split runs are only needed for native multi-arch builds or job-level isolation.
+For simple setups, `-r all` runs all steps sequentially in a single job — no artifact transfer between jobs, minimal runner configuration. Split runs are only needed for native multi-arch builds or job-level isolation.
 
 ### cibuilder Image Variants
 
@@ -98,6 +98,31 @@ update:
 
 For local development and testing, `cibuilder:all` combines all variants and accepts `CIBUILD_RUN_CMD` as an override.
 
+### Build Clients
+
+The build run supports four clients, selected via `CIBUILD_BUILD_CLIENT`:
+
+| Client | Image Variant | Description |
+|--------|---------------|-------------|
+| `buildctl` *(default)* | `build-buildctl` | Daemonless BuildKit via rootlesskit. Runs everywhere — no Docker daemon required. |
+| `buildx` | `build-buildx` | Docker buildx with three driver options: `dockercontainer`, `remote`, `kubernetes`. |
+| `kaniko` | `build-kaniko` | Rootless Kubernetes-native builds. Runs as root, no daemon. |
+| `nix` | `build-nix` | Declarative, reproducible builds via Nix flakes. No Dockerfile required. Output is a content-addressed OCI tar. |
+
+#### Nix Build Client
+
+The `nix` client builds OCI images from a `flake.nix` in the repository root using `nixpkgs.dockerTools`. The result is a fully reproducible, distroless-style image — identical byte-for-byte on every build given the same inputs.
+
+```sh
+# cibuild.env
+CIBUILD_BUILD_CLIENT=nix
+CIBUILD_NIX_FLAKE_ATTR=default        # packages.<system>.default in flake.nix
+CIBUILD_NIX_CACHE_URL=https://attic.example.com/mycache   # optional Attic/Cachix
+CIBUILD_NIX_CACHE_TOKEN=...           # optional cache auth token
+```
+
+The `build-nix` cibuilder variant ships a single-user Nix installation with flakes enabled. Sandbox mode is auto-detected at runtime. No `--privileged` flag required.
+
 ### Single job vs. split jobs
 
 **`-r all` — single job (recommended default)**
@@ -106,7 +131,7 @@ For local development and testing, `cibuilder:all` combines all variants and acc
 cibuild -r all
 ```
 
-All four runs execute sequentially inside a single CI job. No intermediate artifacts need to be transferred between jobs. This is the simplest setup and works well for the majority of projects — including production CI pipelines where native multi-arch builds or job-level isolation are not required.
+All runs execute sequentially inside a single CI job. No intermediate artifacts need to be transferred between jobs. This is the simplest setup and works well for the majority of projects — including production CI pipelines where native multi-arch builds or job-level isolation are not required.
 
 **Split runs — multiple CI jobs**
 
@@ -211,6 +236,7 @@ The build run builds one OCI image per platform and pushes the result to the tar
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `CIBUILD_BUILD_CLIENT` | `buildctl` | Set to `nix` to use the Nix flake build backend. |
 | `CIBUILD_NIX_FLAKE_ATTR` | `default` | Nix flake attribute to build (`packages.<system>.<attr>`). |
 | `CIBUILD_NIX_CACHE_URL` | *(empty)* | Attic or Cachix binary cache URL. |
 | `CIBUILD_NIX_CACHE_TOKEN` | *(empty)* | Auth token for the Nix binary cache. |
@@ -433,7 +459,7 @@ Example:
 
 ```sh
 CIBUILD_RELEASE_IMAGE_TAGS="latest,__MINORTAG__"
-CIBUILD_RELEASE_MINOR_TAG_REGEX="^3\.[0-9]+$"
+CIBUILD_RELEASE_MINOR_TAG_REGEX="^3\\.[0-9]+$"
 # base image python:3.12.7 → tags: main, latest, 3.12
 ```
 
