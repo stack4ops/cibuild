@@ -191,7 +191,7 @@ install() {
   fi
 
   # pull and start containers
-  docker pull      ${CIBUILDER_IMAGE}:${CIBUILDER_REF}
+  # docker pull      ${CIBUILDER_IMAGE}:${CIBUILDER_REF}
   docker volume    inspect ${COMPOSE_PROJECT_NAME}-registry-data > /dev/null 2>&1 || docker volume  create ${COMPOSE_PROJECT_NAME}-registry-data
   docker network   inspect ${COMPOSE_PROJECT_NAME}-net           > /dev/null 2>&1 || docker network create ${COMPOSE_PROJECT_NAME}-net
   

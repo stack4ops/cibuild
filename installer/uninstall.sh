@@ -72,12 +72,12 @@ fi
 
 if [ $purge -eq 1 ]; then
   echo "purge volumes"
+  
   docker volume rm cibuilder-registry-data
+  
   if [ "${DIND_ENABLED}" = "1" ]; then
     docker volume rm cibuilder-dind-data
   fi
-
-  docker volume rm cibuilder-registry-data
 
   if [ "${NIX_ENABLED}" = "1" ]; then
     docker volume rm cibuilder-attic-storage
@@ -97,6 +97,8 @@ if [ $purge -eq 1 ]; then
     echo "delete ./signing/cosign.pub"
     rm ./signing/cosign.pub
   fi
+  
+  docker volume rm cibuilder-trivy-cache >/dev/null 2>&1
 fi
 
 cd ${ORIG_PWD}

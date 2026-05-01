@@ -89,5 +89,3 @@ docker run \
   --env-file ~/.config/cibuild/.env \
   -e "CIBUILD_RUN_CMD=${CIBUILD_RUN_CMD}" \
   ${CIBUILDER_IMAGE}:${CIBUILDER_REF}
-
-#--security-opt systempaths=unconfined \
