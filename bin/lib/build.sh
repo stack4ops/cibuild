@@ -261,8 +261,6 @@ cibuild__build_get_export_cache_args() {
   esac
 }
 
-
-
 cibuild__build_get_provenance_args() {
   local build_provenance=$(cibuild_env_get 'build_provenance') \
         build_provenance_mode=$(cibuild_env_get 'build_provenance_mode') \
@@ -285,6 +283,96 @@ cibuild__build_get_provenance_args() {
   else
     printf '%s\n' ""
   fi
+}
+
+# =============================================================================
+# DEBUG HELPER — dumps buildkitd/QEMU diagnostics to log
+# Called once before the first buildctl invocation
+# =============================================================================
+cibuild__build_debug_buildkitd() {
+  cibuild_log_info "=== buildkitd/QEMU diagnostics ==="
+
+  # 1. rootlesskit environment
+  cibuild_log_info "--- rootlesskit environment ---"
+  cibuild_log_info "  ROOTLESSKIT_STATE_DIR: ${ROOTLESSKIT_STATE_DIR:-NOT SET}"
+  cibuild_log_info "  ROOTLESSKIT_PID:       ${ROOTLESSKIT_PID:-NOT SET}"
+  cibuild_log_info "  ROOTLESSKIT_PARENT_EUID: ${ROOTLESSKIT_PARENT_EUID:-NOT SET}"
+  cibuild_log_info "  ROOTLESSKIT_PARENT_EGID: ${ROOTLESSKIT_PARENT_EGID:-NOT SET}"
+
+  # 2. identity & subuid
+  cibuild_log_info "--- identity ---"
+  cibuild_log_info "  id:     $(id)"
+  cibuild_log_info "  whoami: $(whoami 2>/dev/null || echo n/a)"
+  cibuild_log_info "  subuid: $(grep "^$(id -un):" /etc/subuid 2>/dev/null || grep "^root:" /etc/subuid 2>/dev/null || echo 'not found')"
+  cibuild_log_info "  subgid: $(grep "^$(id -un):" /etc/subgid 2>/dev/null || grep "^root:" /etc/subgid 2>/dev/null || echo 'not found')"
+  cibuild_log_info "  /etc/subuid contents: $(cat /etc/subuid 2>/dev/null || echo 'not readable')"
+  cibuild_log_info "  /etc/subgid contents: $(cat /etc/subgid 2>/dev/null || echo 'not readable')"
+
+  # 3. buildctl-daemonless.sh — which one and its content
+  cibuild_log_info "--- buildctl-daemonless.sh ---"
+  local daemonless_path
+  daemonless_path="$(command -v buildctl-daemonless.sh 2>/dev/null || echo 'NOT IN PATH')"
+  cibuild_log_info "  which: ${daemonless_path}"
+  if [ -f "${daemonless_path}" ]; then
+    cibuild_log_info "  --- content start ---"
+    cat "${daemonless_path}" | while IFS= read -r line; do cibuild_log_info "  | $line"; done
+    cibuild_log_info "  --- content end ---"
+  fi
+
+  # 4. buildkit binaries — location and versions
+  cibuild_log_info "--- buildkit binaries ---"
+  cibuild_log_info "  which buildkitd:  $(command -v buildkitd 2>/dev/null || echo NOT FOUND)"
+  cibuild_log_info "  which buildctl:   $(command -v buildctl 2>/dev/null || echo NOT FOUND)"
+  cibuild_log_info "  buildkitd version: $(buildkitd --version 2>&1 || echo ERROR)"
+  cibuild_log_info "  buildctl version:  $(buildctl --version 2>&1 || echo ERROR)"
+
+  # 5. buildkit-qemu-* binaries
+  cibuild_log_info "--- buildkit-qemu-* binaries ---"
+  local bkd_dir
+  bkd_dir="$(dirname "$(command -v buildkitd 2>/dev/null)")"
+  cibuild_log_info "  buildkitd dir: ${bkd_dir}"
+  ls -la "${bkd_dir}/buildkit-qemu-"* 2>/dev/null \
+    | while IFS= read -r line; do cibuild_log_info "  $line"; done \
+    || cibuild_log_info "  WARNING: no buildkit-qemu-* found in ${bkd_dir}"
+
+  # 6. buildkitd env vars
+  cibuild_log_info "--- buildkitd env ---"
+  cibuild_log_info "  BUILDKIT_HOST:    ${BUILDKIT_HOST:-not set}"
+  cibuild_log_info "  BUILDKITD_FLAGS:  ${BUILDKITD_FLAGS:-not set}"
+  cibuild_log_info "  XDG_RUNTIME_DIR:  ${XDG_RUNTIME_DIR:-not set}"
+  cibuild_log_info "  TMPDIR:           ${TMPDIR:-not set}"
+
+  # 7. kernel binfmt_misc
+  cibuild_log_info "--- /proc/sys/fs/binfmt_misc ---"
+  if [ -r /proc/sys/fs/binfmt_misc/status ]; then
+    cibuild_log_info "  status: $(cat /proc/sys/fs/binfmt_misc/status)"
+    ls /proc/sys/fs/binfmt_misc/ 2>/dev/null \
+      | grep -v '^register$\|^status$' \
+      | while IFS= read -r entry; do
+          cibuild_log_info "  entry: $entry"
+        done
+  else
+    cibuild_log_info "  not mounted or not readable"
+  fi
+
+  # 8. user namespace kernel support
+  cibuild_log_info "--- kernel userns ---"
+  cibuild_log_info "  max_user_namespaces: $(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo 'not readable')"
+  cibuild_log_info "  unprivileged_userns_clone: $(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo 'not present')"
+
+  # 9. newuidmap / newgidmap (needed by rootlesskit for nested userns)
+  cibuild_log_info "--- newuidmap/newgidmap ---"
+  cibuild_log_info "  newuidmap: $(command -v newuidmap 2>/dev/null || echo NOT FOUND)"
+  cibuild_log_info "  newgidmap: $(command -v newgidmap 2>/dev/null || echo NOT FOUND)"
+  ls -la "$(command -v newuidmap 2>/dev/null)" 2>/dev/null \
+    | while IFS= read -r line; do cibuild_log_info "  $line"; done
+  # check caps on newuidmap
+  if command -v getcap >/dev/null 2>&1; then
+    cibuild_log_info "  caps newuidmap: $(getcap "$(command -v newuidmap 2>/dev/null)" 2>/dev/null || echo n/a)"
+    cibuild_log_info "  caps newgidmap: $(getcap "$(command -v newgidmap 2>/dev/null)" 2>/dev/null || echo n/a)"
+  fi
+
+  cibuild_log_info "=== end diagnostics ==="
 }
 
 cibuild__build_image_buildx() {
@@ -400,7 +488,10 @@ cibuild__build_image_buildctl() {
   else
     build_command="buildctl-daemonless.sh"
   fi
-  
+
+  # --- diagnostics before first build ---
+  cibuild__build_debug_buildkitd
+
   # build oci image for each arch (Unfortunately docker references attestations in a (forced) image-index for each image)
   # in release run a clean oci multiarch image index is created for final tagging 
   # and an optional docker attestation manifest for ui
@@ -432,6 +523,9 @@ cibuild__build_image_buildctl() {
       no_cache=""
     fi
 
+    cibuild_log_info "--- build command for platform ${platform} ---"
+    cibuild_log_info "  cmd: $build_command build --frontend=dockerfile.v0 --opt platform=${platform} ..."
+
     if ! $build_command \
       build \
       --frontend=dockerfile.v0 \
@@ -446,7 +540,24 @@ cibuild__build_image_buildctl() {
       ${cache:-} \
       --output "type=image,name=${target_image}:${build_tag}-${platform_name},oci-artifact=true,push=true" \
       "$@"; then
-      cibuild_main_err "failed: $build_command"   
+      cibuild_log_info "--- build FAILED for ${platform} — post-failure diagnostics ---"
+      # check if qemu emulator symlink/file was created in /dev/
+      cibuild_log_info "  /dev/.buildkit_qemu_emulator: $(ls -la /dev/.buildkit_qemu_emulator 2>/dev/null || echo 'not found')"
+      # check if the problem is a missing qemu binary for this arch
+      local qemu_arch
+      case "${platform}" in
+        linux/arm64)  qemu_arch="aarch64" ;;
+        linux/arm*)   qemu_arch="arm" ;;
+        linux/amd64)  qemu_arch="x86_64" ;;  
+        linux/s390x)  qemu_arch="s390x" ;;
+        linux/ppc64le) qemu_arch="ppc64le" ;;
+        linux/riscv64) qemu_arch="riscv64" ;;
+      esac
+      if [ -n "${qemu_arch:-}" ]; then
+        cibuild_log_info "  expected qemu binary: buildkit-qemu-${qemu_arch}"
+        cibuild_log_info "  found: $(ls -la /usr/local/bin/buildkit-qemu-${qemu_arch} 2>/dev/null || echo 'NOT FOUND')"
+      fi
+      cibuild_main_err "failed: $build_command"
     fi
   done
 
@@ -527,8 +638,6 @@ cibuild__build_image_nix() {
   cibuild_log_info "build image with nix"
 
   # --- sandbox autodetect ---
-  # if ROOTLESSKIT_PID is set we are running inside rootlesskit
-  # which provides user namespaces — nix sandbox can use mount namespaces
   if [ -n "${nix_sandbox:-}" ]; then
     nix_sandbox_val="${nix_sandbox}"
   elif [ -n "${ROOTLESSKIT_PID:-}" ]; then
@@ -551,7 +660,6 @@ EOF
   if [ -n "${nix_cache_url:-}" ]; then
     cibuild_log_info "nix cache: ${nix_cache_url}"
 
-    # write netrc for authenticated cache access
     if [ -n "${nix_cache_token:-}" ]; then
       cache_host=$(printf '%s\n' "${nix_cache_url}" | sed 's|https\?://||' | cut -d'/' -f1)
       mkdir -p "${HOME}/.config/nix"
@@ -560,7 +668,6 @@ EOF
       printf 'netrc-file = %s/.config/nix/netrc\n' "${HOME}" >> "${nix_conf_dir}/nix.conf"
     fi
 
-    # append substituters
     printf 'substituters = https://cache.nixos.org %s\n' "${nix_cache_url}" \
       >> "${nix_conf_dir}/nix.conf"
     printf 'trusted-substituters = https://cache.nixos.org %s\n' "${nix_cache_url}" \
@@ -581,7 +688,6 @@ EOF
     platform_name=$(printf '%s\n' "${platform}" | tr '/' '-')
     cibuild_log_debug "platform: ${platform} → platform_name: ${platform_name}"
 
-    # map OCI platform to nix system
     case "${platform}" in
       linux/amd64)  nix_system="x86_64-linux"  ;;
       linux/arm64)  nix_system="aarch64-linux"  ;;
@@ -592,7 +698,6 @@ EOF
 
     cibuild_log_info "nix build .#${nix_flake_attr} for ${nix_system}"
 
-    # build nix flake → OCI archive in ./result
     if [ "${build_use_cache}" = "0" ]; then
       nix_opts="--option substitute false"
     else
@@ -609,7 +714,6 @@ EOF
       cibuild_main_err "nix build failed for ${nix_system}"
     fi
 
-    # get store path of built OCI archive
     nix_result=$(nix build \
       ".#${nix_flake_attr}" \
       --system "${nix_system}" \
@@ -619,7 +723,6 @@ EOF
 
     cibuild_log_debug "nix result path: ${nix_result}"
 
-    # push result to target registry via regctl
     cibuild_log_info "pushing ${target_image}:${build_tag}-${platform_name}"
 
     if ! regctl image import \
@@ -628,15 +731,10 @@ EOF
       cibuild_main_err "regctl image import failed for ${platform_name}"
     fi
 
-
-    # --- push store paths to cache after successful build via nix copy ---
-    # nix copy works with any nix-compatible cache (attic, cachix, s3)
-    # no extra binary needed — nix is already installed
     if [ -n "${nix_cache_url:-}" ]; then
       cibuild_log_info "pushing nix store paths to cache: ${nix_cache_url}"
-      # netrc is already written above for authenticated substituter access
-      # nix copy picks it up automatically for push as well
-      nix copy --to "${nix_cache_url}" "${nix_result}" ||         cibuild_log_err "nix copy to cache failed (non-fatal)"
+      nix copy --to "${nix_cache_url}" "${nix_result}" || \
+        cibuild_log_err "nix copy to cache failed (non-fatal)"
     fi
 
   done

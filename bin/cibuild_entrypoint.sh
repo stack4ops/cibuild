@@ -1,5 +1,4 @@
 #!/bin/sh
-
 set -eu
 
 PROJECT_DIR="${CI_PROJECT_DIR:-$(pwd)}"
@@ -7,22 +6,20 @@ export DOCKER_CONFIG="${DOCKER_CONFIG:-/home/cibuilder/.docker}"
 
 # only dynamic cibuild loading libs if not locked
 if [ ! -d "/tmp/cibuilder.locked" ]; then
-    if [ -n "${CIBUILDER_BIN_URL:-}" ] || [ -n "${CIBUILDER_BIN_REF:-}" ]; then
-        CIBUILDER_BIN_URL="${CIBUILDER_BIN_URL:-https://github.com/stack4ops/cibuild/archive/refs/heads}"
-        CIBUILDER_BIN_REF="${CIBUILDER_BIN_REF:-main}"
-
-        echo "using CIBUILDER_BIN_URL: ${CIBUILDER_BIN_URL}"
-        echo "using CIBUILDER_BIN_REF: ${CIBUILDER_BIN_REF}"
-
-        cd /home/cibuilder
-
-        if [ -d "bin" ]; then
-            echo "delete existing /home/cibuilder/bin folder"
-            rm -r "bin"
-        fi
-        curl -L -s "${CIBUILDER_BIN_URL}/${CIBUILDER_BIN_REF}.tar.gz" | tar xzf - --strip-components=1 "cibuild-${CIBUILDER_BIN_REF}/bin"
-        chmod -R 755 "bin"
+  if [ -n "${CIBUILDER_BIN_URL:-}" ] || [ -n "${CIBUILDER_BIN_REF:-}" ]; then
+    CIBUILDER_BIN_URL="${CIBUILDER_BIN_URL:-https://github.com/stack4ops/cibuild/archive/refs/heads}"
+    CIBUILDER_BIN_REF="${CIBUILDER_BIN_REF:-main}"
+    echo "using CIBUILDER_BIN_URL: ${CIBUILDER_BIN_URL}"
+    echo "using CIBUILDER_BIN_REF: ${CIBUILDER_BIN_REF}"
+    cd /home/cibuilder
+    if [ -d "bin" ]; then
+      echo "delete existing /home/cibuilder/bin folder"
+      rm -r "bin"
     fi
+    curl -L -s "${CIBUILDER_BIN_URL}/${CIBUILDER_BIN_REF}.tar.gz" \
+      | tar xzf - --strip-components=1 "cibuild-${CIBUILDER_BIN_REF}/bin"
+    chmod -R 755 "bin"
+  fi
 fi
 
 # return to repo
@@ -30,32 +27,37 @@ cd "$PROJECT_DIR"
 
 # ensure output dir exists if set
 if [ -n "${CIBUILD_OUTPUT_DIR:-}" ]; then
-    mkdir -p "${CIBUILD_OUTPUT_DIR}"
+  mkdir -p "${CIBUILD_OUTPUT_DIR}"
 fi
 
-# set generic default BUILDKITD_FLAGS working mostly everywhere
-export BUILDKITD_FLAGS="${BUILDKITD_FLAGS:--oci-worker-no-process-sandbox}"
+# set default BUILDKITD_FLAGS — three dashes required: one for :- operator, two for --flag
+# --oci-worker-no-process-sandbox: skip extra PID namespace per ExecOp (safe for trusted builds)
+# --root:                          inside home dir so rootlesskit mount namespace covers it
+# --oci-worker-snapshotter:        fuse-overlayfs works reliably in rootless containers
+#_default_buildkitd_flags="--oci-worker-no-process-sandbox --root=/home/cibuilder/.local/share/buildkit --oci-worker-snapshotter=fuse-overlayfs"
+_default_buildkitd_flags="--oci-worker-no-process-sandbox"
+export BUILDKITD_FLAGS="${BUILDKITD_FLAGS:-${_default_buildkitd_flags}}"
 
 : "${CIBUILD_RUN_CMD:?missing CIBUILD_RUN_CMD}"
 
 exec_cmd() {
-    if [ "${CIBUILDER_ROOTLESS_KIT:-0}" = "1" ]; then
-        echo "running in rootlesskit"
-        rootlesskit \
-            -- /bin/sh -c "cibuild -r $CIBUILD_RUN_CMD"
-    else
-        echo "running without rootlesskit"
-        cibuild -r $CIBUILD_RUN_CMD
-    fi
+  if [ "${CIBUILDER_ROOTLESS_KIT:-0}" = "1" ]; then
+    echo "running in rootlesskit"
+    rootlesskit \
+      -- /bin/sh -c "cibuild -r $CIBUILD_RUN_CMD"
+  else
+    echo "running without rootlesskit"
+    cibuild -r $CIBUILD_RUN_CMD
+  fi
 }
 
 case "$CIBUILD_RUN_CMD" in
-  check)    exec_cmd ;;
-  build)    exec_cmd ;;
-  test)     exec_cmd ;;
-  release)  exec_cmd ;;
-  update)   exec_cmd ;;
-  all)      exec_cmd ;;
+  check)   exec_cmd ;;
+  build)   exec_cmd ;;
+  test)    exec_cmd ;;
+  release) exec_cmd ;;
+  update)  exec_cmd ;;
+  all)     exec_cmd ;;
   *)
     echo "unsupported CIBUILD_RUN_CMD: $CIBUILD_RUN_CMD"
     exit 1

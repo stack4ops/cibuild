@@ -64,7 +64,7 @@ if [ "${USE_REPO_LIBS}" = "1" ]; then
     LOCAL_ENTRYPOINT="--entrypoint=/home/cibuilder/bin/cibuild_entrypoint.sh"
   fi
   if [ "${USE_REPO_BUILDCTL_DAEMONLESS}" = "1" ]; then
-    LOCAL_BUILDCTL_DAEMONLESS="-v ${LIB_PATH}/buildctl-daemonless.sh:/usr/bin/buildctl-daemonless.sh"
+    LOCAL_BUILDCTL_DAEMONLESS="-v ${LIB_PATH}/buildctl-daemonless.sh:/usr/local/bin/buildctl-daemonless.sh"
   fi
 fi
 
@@ -88,3 +88,5 @@ docker run \
   --env-file ~/.config/cibuild/.env \
   -e "CIBUILD_RUN_CMD=${CIBUILD_RUN_CMD}" \
   ${CIBUILDER_IMAGE}:${CIBUILDER_REF}
+
+#--security-opt systempaths=unconfined \

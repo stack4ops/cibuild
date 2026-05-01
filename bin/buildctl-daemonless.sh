@@ -19,6 +19,12 @@ cleanup() {
     pid=$(cat "$tmp/pid")
     kill "$pid" 2>/dev/null || true
   fi
+  # always dump buildkitd log for diagnostics
+  if [ -f "$tmp/log" ] && [ -s "$tmp/log" ]; then
+    echo "========== buildkitd log ==========" >&2
+    cat "$tmp/log" >&2
+    echo "====================================" >&2
+  fi
   rm -rf "$tmp"
 }
 
@@ -65,6 +71,7 @@ waitForBuildkitd() {
         try=$(expr $try + 1)
     done
 }
+
 startBuildkitd
 waitForBuildkitd
 $BUILDCTL --addr=$(cat $tmp/addr) "$@"
