@@ -30,14 +30,6 @@ if [ -n "${CIBUILD_OUTPUT_DIR:-}" ]; then
   mkdir -p "${CIBUILD_OUTPUT_DIR}"
 fi
 
-# set default BUILDKITD_FLAGS — three dashes required: one for :- operator, two for --flag
-# --oci-worker-no-process-sandbox: skip extra PID namespace per ExecOp (safe for trusted builds)
-# --root:                          inside home dir so rootlesskit mount namespace covers it
-# --oci-worker-snapshotter:        fuse-overlayfs works reliably in rootless containers
-#_default_buildkitd_flags="--oci-worker-no-process-sandbox --root=/home/cibuilder/.local/share/buildkit --oci-worker-snapshotter=fuse-overlayfs"
-_default_buildkitd_flags="--oci-worker-no-process-sandbox"
-export BUILDKITD_FLAGS="${BUILDKITD_FLAGS:-${_default_buildkitd_flags}}"
-
 : "${CIBUILD_RUN_CMD:?missing CIBUILD_RUN_CMD}"
 
 exec_cmd() {

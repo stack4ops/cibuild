@@ -83,6 +83,7 @@ docker run \
   ${LOCAL_ENTRYPOINT} \
   ${LOCAL_BUILDCTL_DAEMONLESS} \
   ${LOCAL_LOCKED_VOLUME} \
+  -v cibuilder-trivy-cache:/home/cibuilder/.cache/trivy \
   -v .:/repo \
   -w /repo \
   --env-file ~/.config/cibuild/.env \

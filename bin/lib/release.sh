@@ -645,6 +645,7 @@ cibuild__release_mirrors() {
 cibuild__release_sbom() {
   local platform_name=$1 \
         image_ref=$2 \
+        platform=$3 \
         release_sbom_formats=$(cibuild_env_get 'release_sbom_formats') \
         output_dir="${CIBUILD_OUTPUT_DIR:-.}" \
         fmt \
@@ -669,6 +670,7 @@ cibuild__release_sbom() {
     cibuild_log_info "generating SBOM via trivy (${fmt}) for ${platform_name}"
 
     trivy image \
+      --platform "${platform}" \
       --format "${fmt}" \
       --scanners "" \
       --output "${output_dir}/sbom-${platform_name}.${sbom_ext}" \
@@ -683,6 +685,7 @@ cibuild__release_sbom() {
 cibuild__release_vuln() {
   local platform_name=$1 \
         image_ref=$2 \
+        platform=$3 \
         release_vuln=$(cibuild_env_get 'release_vuln') \
         release_vuln_format=$(cibuild_env_get 'release_vuln_format') \
         output_dir="${CIBUILD_OUTPUT_DIR:-.}"
@@ -697,6 +700,7 @@ cibuild__release_vuln() {
   cibuild_log_info "running vulnerability scan via trivy for ${platform_name}"
 
   trivy image \
+    --platform "${platform}" \
     --format "${release_vuln_format:-json}" \
     --scanners vuln \
     --output "${output_dir}/vuln-${platform_name}.json" \
@@ -721,6 +725,7 @@ cibuild__release_write_summary() {
   digests_json="{}"
   for platform in $(echo "$build_platforms" | tr ',' ' '); do
     platform_name=$(echo "$platform" | tr '/' '-')
+    #digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}")
     digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}")
     digests_json=$(echo "$digests_json" | jq --arg p "$platform" --arg d "$digest" '.[$p]=$d')
   done
@@ -737,9 +742,9 @@ cibuild__release_write_summary() {
     platform_name=$(echo "$platform" | tr '/' '-')
     ref="${target_image}:${build_tag}-${platform_name}"
     if [ "${release_sbom}" = "1" ]; then
-      cibuild__release_sbom "${platform_name}" "${ref}"
+      cibuild__release_sbom "${platform_name}" "${ref}" "${platform}"
     fi
-    cibuild__release_vuln "${platform_name}" "${ref}"
+    cibuild__release_vuln "${platform_name}" "${ref}" "${platform}"
     cibuild__release_provenance "${platform_name}" "${ref}"
   done
 
