@@ -2,7 +2,7 @@
 # Package cibuild/update-caches
 
 # ---- Guard ----
-[ -n "${_CIBUILD_UPDATE_CACHES_LOADED-}"] && return
+[ -n "${_CIBUILD_UPDATE_CACHES_LOADED-}" ] && return
 _CIBUILD_UPDATE_CACHES_LOADED=1
 
 # ---------- TRIVY DB ----------
