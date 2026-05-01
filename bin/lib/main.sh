@@ -10,7 +10,7 @@
 . "$CIBUILD_LIB_PATH/build.sh"
 . "$CIBUILD_LIB_PATH/test.sh"
 . "$CIBUILD_LIB_PATH/release.sh"
-. "$CIBUILD_LIB_PATH/update.sh"
+. "$CIBUILD_LIB_PATH/update-caches.sh"
 
 cibuild_main_err() { 
   cibuild_log_err "$1"
@@ -32,7 +32,7 @@ usage() {
   echo "Args:"
   echo "  -h, --help       Show this help"
   echo "  -v, --version    Show version"
-  echo "  -r, --run        Run command: check|build|test|release|update|all"
+  echo "  -r, --run        Run command: check|build|test|release|update-caches|all"
   echo ""
 }
 
@@ -63,11 +63,11 @@ done
 
 # Dispatch commands (Cobra-like)
 case "$CIBUILD_RUN_CMD" in
-  update)
+  update-caches)
     # update run needs no CI init — no git repo, no registry context required
     cibuild_base_init
-    cibuild_log_info "Running update..."
-    cibuild_update_run
+    cibuild_log_info "Running update-caches..."
+    cibuild_update_caches_run
     ;;
   *)
     # all other runs need full CI init (git, registry, ci adapter, base image)
@@ -92,7 +92,7 @@ case "$CIBUILD_RUN_CMD" in
     cibuild_log_info "Running release..."
     cibuild_release_run
     ;;
-  update)
+  update-caches)
     # already handled above
     ;;
   all)

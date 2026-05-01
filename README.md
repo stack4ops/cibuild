@@ -23,7 +23,7 @@
    - [Build Run](#build-run)
    - [Test Run](#test-run)
    - [Release Run](#release-run)
-   - [Update Run](#update-run)
+   - [Update-Caches Run](#update-caches-run)
 5. [Dynamic Variables (Secrets, Build Args, Cosign Annotations)](#dynamic-variables)
 6. [CI Adapter Variables](#ci-adapter-variables)
 7. [Tag Templates](#tag-templates)
@@ -42,7 +42,7 @@ The tool is invoked as:
 
 ```sh
 cibuild -r <command>
-# command: check | build | test | release | update | all
+# command: check | build | test | release | update-caches | all
 ```
 
 CI platform detection is automatic (GitLab CI, GitHub Actions, local). Each platform has an adapter that maps native CI variables to cibuild's internal interface.
@@ -61,7 +61,7 @@ cibuild has five runs that can be invoked individually or all at once:
 | `build` | `cibuilder:build-buildctl` / `build-nix` / `build-kaniko` / `build-buildx` | Builds per-platform OCI images and pushes them to the target registry. |
 | `test` | `cibuilder:test-docker` / `test-k8s` | Runs test script and/or JSON assertions against the freshly built image. |
 | `release` | `cibuilder:release` | Assembles a clean multi-platform index, generates SBOM (SPDX + CycloneDX), runs CVE scan, signs with cosign, copies additional tags, mirrors to other registries. |
-| `update` | `cibuilder:update` | Refreshes external caches (trivy vulnerability DB). Intended for scheduled pipelines — no build, no release. |
+| `update-caches` | `cibuilder:update-caches` | Refreshes external caches (trivy vulnerability DB). Intended for scheduled pipelines — no build, no release. |
 
 Each run can be individually enabled or disabled and supports `pre_script` / `post_script` hooks.
 
@@ -89,8 +89,8 @@ release:
   image: ghcr.io/stack4ops/cibuilder:release
   script: [/bin/true]
 
-update:
-  image: ghcr.io/stack4ops/cibuilder:update
+update-caches:
+  image: ghcr.io/stack4ops/cibuilder:update-caches
   script: [/bin/true]
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
@@ -354,20 +354,20 @@ cert.json                         # cosign keyless certificate
 
 ---
 
-## Update Run
+## Update-Caches Run
 
 The update run refreshes external caches without performing any build or release steps. It is intended for scheduled pipelines to keep caches warm.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CIBUILD_UPDATE_ENABLED` | `0` | Set to `1` to enable the update run. Pre-set to `1` in `cibuilder:update`. |
-| `CIBUILD_UPDATE_TRIVY_DB` | `1` | Download and refresh the trivy vulnerability database. Requires a writable cache volume mounted at `$HOME/.cache/trivy`. |
+| `CIBUILD_UPDATE_CACHES_ENABLED` | `0` | Set to `1` to enable the update run. Pre-set to `1` in `cibuilder:update-caches`. |
+| `CIBUILD_UPDATE_CACHES_TRIVY_DB` | `1` | Download and refresh the trivy vulnerability database. Requires a writable cache volume mounted at `$HOME/.cache/trivy`. |
 
 **Recommended GitLab CI setup:**
 
 ```yaml
-update:
-  image: ghcr.io/stack4ops/cibuilder:update
+update-caches:
+  image: ghcr.io/stack4ops/cibuilder:update-caches
   script: [/bin/true]
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
