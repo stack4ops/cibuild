@@ -633,7 +633,8 @@ cibuild__build_image_nix() {
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
-        nix_flake_attr=$(cibuild_env_get 'nix_flake_attr') \
+        nix_flake_attr_override=$(cibuild_env_get 'nix_flake_attr') \
+        nix_flake_attr \
         nix_cache_url=$(cibuild_env_get 'nix_cache_url') \
         nix_cache_token=$(cibuild_env_get 'nix_cache_token') \
         nix_sandbox=$(cibuild_env_get 'nix_sandbox') \
@@ -661,6 +662,8 @@ cibuild__build_image_nix() {
   cat > "${nix_conf_dir}/nix.conf" <<EOF
 experimental-features = nix-command flakes
 sandbox = ${nix_sandbox_val}
+# single-user install — no nixbld group needed
+build-users-group =
 EOF
 
   # --- configure Attic cache if set ---
@@ -669,9 +672,11 @@ EOF
 
     if [ -n "${nix_cache_token:-}" ]; then
       cache_host=$(printf '%s\n' "${nix_cache_url}" | sed 's|https\?://||' | cut -d'/' -f1)
-      mkdir -p "${HOME}/.config/nix"
+      # Attic auth via netrc — format: machine <host> password <jwt-token>
+      # no login field required, Attic ignores it
       printf 'machine %s password %s\n' "${cache_host}" "${nix_cache_token}" \
         > "${HOME}/.config/nix/netrc"
+      chmod 600 "${HOME}/.config/nix/netrc"
       printf 'netrc-file = %s/.config/nix/netrc\n' "${HOME}" >> "${nix_conf_dir}/nix.conf"
     fi
 
@@ -703,6 +708,19 @@ EOF
         ;;
     esac
 
+    # derive flake attribute from build_tag + arch unless explicitly overridden
+    # CIBUILD_NIX_FLAKE_ATTR is optional — if unset, use <build_tag>-<arch>
+    # branch name IS the build_tag — e.g. branch "83-fpm" → attr "83-fpm-amd64"
+    case "${platform}" in
+      linux/amd64) _nix_arch="amd64" ;;
+      linux/arm64) _nix_arch="arm64" ;;
+    esac
+    if [ -n "${nix_flake_attr_override:-}" ]; then
+      nix_flake_attr="${nix_flake_attr_override}"
+    else
+      nix_flake_attr="${build_tag}-${_nix_arch}"
+    fi
+
     cibuild_log_info "nix build .#${nix_flake_attr} for ${nix_system}"
 
     if [ "${build_use_cache}" = "0" ]; then
@@ -712,7 +730,7 @@ EOF
     fi
 
     if ! nix build \
-      ".#${nix_flake_attr}" \
+      ".#\"${nix_flake_attr}\"" \
       --system "${nix_system}" \
       ${nix_opts} \
       --no-link \
@@ -722,7 +740,7 @@ EOF
     fi
 
     nix_result=$(nix build \
-      ".#${nix_flake_attr}" \
+      ".#\"${nix_flake_attr}\"" \
       --system "${nix_system}" \
       ${nix_opts} \
       --no-link \
@@ -733,8 +751,8 @@ EOF
     cibuild_log_info "pushing ${target_image}:${build_tag}-${platform_name}"
 
     if ! regctl image import \
-      "oci-archive:${nix_result}" \
-      "${target_image}:${build_tag}-${platform_name}"; then
+      "${target_image}:${build_tag}-${platform_name}" \
+      "${nix_result}"; then
       cibuild_main_err "regctl image import failed for ${platform_name}"
     fi
 

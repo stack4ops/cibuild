@@ -183,7 +183,9 @@ cibuild__core_create_docker_auth_config() {
         ci_registry_user=$(cibuild_ci_registry_user) \
         ci_registry_pass=$(cibuild_ci_registry_pass)
 
-  [ -z "$base_registry" ] && cibuild_main_err 'missing base_registry'
+  # base_registry is not required for the nix backend — no FROM line, no base image
+  local build_client_check=$(cibuild_env_get 'build_client')
+  [ -z "$base_registry" ] && [ "${build_client_check}" != "nix" ] && cibuild_main_err 'missing base_registry'
   [ -z "$target_registry" ] && cibuild_main_err 'missing target_registry'
   [ -z "$ci_registry" ] && cibuild_main_err 'missing ci_registry'
 
@@ -222,7 +224,10 @@ cibuild__core_create_docker_auth_config() {
   sed -i "s|TARGET_USER|$target_user|g" ${HOME}/.docker/config.json
   sed -i "s|TARGET_PASS|$target_pass|g" ${HOME}/.docker/config.json
   
-  if ! grep -q "${base_registry}" "${HOME}/.docker/config.json"; then
+  if [ -z "${base_registry}" ]; then
+    cibuild_log_debug "base_registry empty — skipping (nix backend)"
+    base_reg="skipbaseregistry.local.com"
+  elif ! grep -q "${base_registry}" "${HOME}/.docker/config.json"; then
     cibuild_log_debug "add ${base_registry}"
     base_reg=$(cibuild__core_get_auth_url_for_registry ${base_registry})
     if [ "${base_registry_auth}" = "1" ]; then
@@ -408,9 +413,13 @@ cibuild_core_init() {
       cibuild_log_dump "$line"
     fi
   done
-  # from Dockerfile|Containerfile
+  # from Dockerfile|Containerfile (skipped for nix backend)
   cibuild__core_get_base_image
-  cibuild_log_debug "base image: $(cibuild_core_base_image_full)"
+  if [ "$(cibuild_env_get build_client)" != "nix" ]; then
+    cibuild_log_debug "base image: $(cibuild_core_base_image_full)"
+  else
+    cibuild_log_debug "base image: n/a (nix backend — defined in flake.nix)"
+  fi
   # from ci adapter
   cibuild_log_debug "target image: $(cibuild_ci_target_image_full)"
   # create auth files
