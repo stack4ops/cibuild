@@ -1,7 +1,7 @@
 #!/bin/sh
 # Package cibuild/release
 
-# All releaseable artifacts and their attestations are signed 
+# All releaseable artifacts and their attestations are signed
 # by the same cryptographic identity to ensure a single, auditable trust root.
 
 # ---- Guard (like init once) ----
@@ -12,162 +12,96 @@ cibuild__release_minortag_template=""
 cibuild__release_minortag=""
 cibuild__target_digest=""
 
+# =============================================================================
+# HELPERS (mostly unchanged from original)
+# =============================================================================
+
 cibuild__get_docker_attestation_digest() {
-  local platform_image="$1"
-  local build_tag="$2"
-  local platform_name="$3"
-
-  local image="${platform_image}:${build_tag}-${platform_name}"
-
-  local ref_digest=$(regctl -v error manifest head ${image})
-  
-  local attestation=$(regctl -v error manifest get "${image}@${ref_digest}" \
-    --format '{{range .Manifests}}{{if eq (index .Annotations "vnd.docker.reference.type") "attestation-manifest"}}{{.Digest}}{{end}}{{end}}') \
-    || {
-      cibuild_log_err "error getting attestation digest"
-      exit 1
-    }
-
-  printf '%s\n' "$attestation"
+  local platform_image="$1" image_digest="$2"
+  local ref="${platform_image}@${image_digest}"
+  local ref_digest
+  ref_digest=$(regctl -v error manifest head "${ref}")
+  regctl -v error manifest get "${ref}@${ref_digest}" \
+    --format '{{range .Manifests}}{{if eq (index .Annotations "vnd.docker.reference.type") "attestation-manifest"}}{{.Digest}}{{end}}{{end}}'
 }
 
 cibuild__release_provenance() {
-  local platform_name=$1 \
-        image_ref=$2 \
+  local platform_name=$1 image_ref=$2 \
         build_provenance=$(cibuild_env_get 'build_provenance') \
         build_client=$(cibuild_env_get 'build_client') \
         output_dir="${CIBUILD_OUTPUT_DIR:-.}"
 
-  # provenance only available from buildkit-based builds
-  # nix: tbd (ZenDIS alignment pending)
-  # kaniko: no provenance support
   case "${build_client}" in
     buildctl|buildx) ;;
-    *)
-      cibuild_log_info "provenance skipped: not supported for build_client=${build_client}"
-      return 0
-      ;;
+    *) return 0 ;;
   esac
-
   [ "${build_provenance}" = "1" ] || return 0
 
-  # find attestation manifest digest via regctl
-  local ref_digest
-  ref_digest=$(regctl -v error manifest head "${image_ref}") || {
-    cibuild_log_err "provenance: cannot get manifest digest for ${image_ref}"
-    return 0
-  }
-
-  local attestation_digest
+  local ref_digest attestation_digest
+  ref_digest=$(regctl -v error manifest head "${image_ref}") || return 0
   attestation_digest=$(regctl -v error manifest get "${image_ref}@${ref_digest}" \
-    --format '{{range .Manifests}}{{if eq (index .Annotations "vnd.docker.reference.type") "attestation-manifest"}}{{.Digest}}{{end}}{{end}}') || {
-    cibuild_log_err "provenance: cannot find attestation manifest for ${image_ref}"
-    return 0
-  }
+    --format '{{range .Manifests}}{{if eq (index .Annotations "vnd.docker.reference.type") "attestation-manifest"}}{{.Digest}}{{end}}{{end}}') || return 0
 
-  if [ -z "${attestation_digest}" ]; then
-    cibuild_log_info "provenance: no attestation manifest found for ${platform_name} (buildkit provenance may be disabled)"
-    return 0
-  fi
+  [ -z "${attestation_digest}" ] && return 0
 
-  cibuild_log_info "extracting provenance via regctl for ${platform_name}"
-
-  # extract the provenance layer from the attestation manifest
   regctl artifact get "${image_ref}@${attestation_digest}" \
-    > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || {
-    cibuild_log_err "provenance extraction failed for ${platform_name} (non-fatal)"
-    return 0
-  }
-
-  cibuild_log_info "provenance written to ${output_dir}/provenance-${platform_name}.slsa.json"
+    > "${output_dir}/provenance-${platform_name}.slsa.json" 2>/dev/null || return 0
+  cibuild_log_info "provenance written: ${output_dir}/provenance-${platform_name}.slsa.json"
 }
 
 cibuild__release_copy_tag() {
-  local copy_to_tag="$1" \
-        target_image=${2:-$(cibuild_ci_target_image)} \
-        build_tag=$(cibuild_ci_build_tag)
-  
+  local copy_to_tag="$1" target_image=${2:-$(cibuild_ci_target_image)}
   if [ -z "${cibuild__target_digest:-}" ]; then
-    cibuild_main_err "internal global cibuild__target_digest missing"
+    cibuild_main_err "internal: cibuild__target_digest missing"
   fi
-
-  if ! regctl -v error image copy ${target_image}@${cibuild__target_digest} ${target_image}:${copy_to_tag} >/dev/null 2>&1; then
-      cibuild_log_err "failed to set tag ${target_image}:${copy_to_tag} for ${target_image}@${cibuild__target_digest}"
-      return 1
+  if ! regctl -v error image copy \
+    ${target_image}@${cibuild__target_digest} \
+    ${target_image}:${copy_to_tag} >/dev/null 2>&1; then
+    cibuild_log_err "failed to set tag ${target_image}:${copy_to_tag}"
+    return 1
   fi
   return 0
 }
 
 cibuild__get_minor_tag() {
-
   local release_minor_tag_regex=$(cibuild_env_get 'release_minor_tag_regex') \
         base_image=$(cibuild_core_base_image) \
-        base_tag=$(cibuild_core_base_tag) \
-        ref \
-        current_digest \
+        base_tag=$(cibuild_core_base_tag)
 
-  sed_escape() {
-    printf '%s' "$1" | sed 's/[&\/]/\\&/g'
-  }
+  sed_escape() { printf '%s' "$1" | sed 's/[&\/]/\\&/g'; }
 
-  if [ -z "${release_minor_tag_regex:-}" ]; then
-    cibuild_log_debug "no minor tag regex defined. skipping get_minor_tag"
-    return 0
-  fi
+  [ -z "${release_minor_tag_regex:-}" ] && return 0
+  [ -z "${cibuild__release_minortag_template:-}" ] && return 0
 
-  if [ -z "${cibuild__release_minortag_template:-}" ]; then
-    cibuild_log_debug "no additional __MINORTAG__ defined. skipping get_minor_tag"
-    return 0
-  fi
-  
-  ref="${base_image}:${base_tag}"
-  
-  # retrieve digest for base_tag
-  if ! current_digest=$(regctl -v error image digest "$ref"); then
-    cibuild_log_err "failed to get digest for $ref"
-    return 1
-  fi
+  local ref="${base_image}:${base_tag}"
 
-  cibuild_log_debug "current_digest: $current_digest"
-  cibuild_log_debug "minor_tag_regex: ${release_minor_tag_regex}"
+  cibuild_log_debug "regex $release_minor_tag_regex"
 
-  # get tags, filter, reverse sorting
+  local current_digest
+  current_digest=$(regctl -v error image digest "$ref" --platform=linux/amd64) || return 1
+
+  cibuild_log_debug "current_digest $current_digest"
+
   local limit=$(cibuild_env_get 'release_minor_tag_paging_limit') \
-        last="" \
-        seen_last="" \
-        all_tags=""
+        last="" seen_last="" all_tags=""
   while :; do
-    local tags="$(regctl -v error tag ls "${base_image}" --limit "$limit" ${last:+--last "$last"})"
-
-    # no more tags available
+    local tags
+    tags="$(regctl -v error tag ls "${base_image}" --limit "$limit" ${last:+--last "$last"})"
     [ -z "$tags" ] && break
-
     all_tags="$all_tags\n$tags"
-    # store last tag
     last="$(echo "$tags" | tail -n 1)"
-    cibuild_log_dump "paging starting from $last"
-    # no endless loop
-    if [ "$last" = "$seen_last" ]; then
-      cibuild_log_info "paging stalled at tag: $last" >&2
-      break
-    fi
+    [ "$last" = "$seen_last" ] && break
     seen_last="$last"
-  done 
-  
-  tags="$(printf "%b\n" "$all_tags" | sort -V -r | grep -E "$release_minor_tag_regex")"
-  local mt
+  done
+
+  local tags mt
+  tags="$(printf "%b\n" "$all_tags" | sort -V -r | grep -P "$release_minor_tag_regex")"
   for mt in $tags; do
-    if ! tag_digest=$(regctl -v error image digest "${base_image}:${mt}"); then
-      cibuild_log_err "failed to get digest for ${base_image}:${mt}"
-      continue
-    fi
-
-    cibuild_log_debug "$tag_digest - $mt"
-
+    local tag_digest
+    tag_digest=$(regctl -v error image digest "${base_image}:${mt}" --platform=linux/amd64) || continue
     if [ "$tag_digest" = "$current_digest" ]; then
-      cibuild_log_debug "found matching tag for $base_tag = $mt with same digest $current_digest"
+      local _mt
       _mt=$(cibuild_ci_process_tag $cibuild__release_minortag_template)
-      # set global variable
       cibuild__release_minortag=$(printf '%s' "$_mt" | sed -e "s/__MINORTAG__/$(sed_escape "$mt")/g")
       return 0
     fi
@@ -177,278 +111,80 @@ cibuild__get_minor_tag() {
   return 1
 }
 
-cibuild__sign() {
-  local image="$1" \
-        release_cosign_signing_mode=$(cibuild_env_get 'release_cosign_signing_mode') \
-        release_cosign_new_bundle_format=$(cibuild_env_get 'release_cosign_new_bundle_format') \
-        release_cosign_verify=$(cibuild_env_get 'release_cosign_verify') \
-        release_cosign_signing_recursive=$(cibuild_env_get 'release_cosign_signing_recursive') \
-        release_cosign_signing_config=$(cibuild_env_get 'release_cosign_signing_config') \
-        max_sign_retries=3 \
-        sign_try=1 \
-        sign_success=0 \
-        max_verify_wait=30 \
-        verify_interval=3 \
-        waited=0 \
-        sign_args="" \
-        verify_args="" \
-        use_signing_config=""
-        
-  cibuild_log_debug "signing $image mode=${release_cosign_signing_mode}"
-
-  . "${CIBUILD_LIB_PATH}/cosign_annotations.sh"
-
-  export COSIGN_PASSWORD=""
-  export COSIGN_NON_INTERACTIVE=1
-
-  local new_bundle_format="" # default
-
-  if [ "${release_cosign_new_bundle_format}" = "0" ]; then
-    new_bundle_format="--new-bundle-format=false"
-  fi
-
-  use_signing_config=""
-
-  if [ -z "${release_cosign_signing_config}" ]; then
-    if [ "${release_cosign_signing_mode}" = "key" ]; then
-      cibuild_log_debug "no default signing config, create empty signing config for key mode"
-      cibuild_log_debug "create empty signing config"
-      cosign signing-config create \
-        --no-default-rekor \
-        --no-default-fulcio \
-        --no-default-oidc \
-        --no-default-tsa \
-        --out /tmp/cosign.json
-      use_signing_config="--signing-config=/tmp/cosign.json"
-    else
-      cibuild_log_debug "no signing config: keep defaults from cosign in keyless mode"
-      use_signing_config=""
-    fi
-  else
-    cibuild_log_debug "copy release_cosign_signing_config > /tmp/cosign.json, use in key and keyless mode"
-    printf '%s\n' "$release_cosign_signing_config" | base64 -d > /tmp/cosign.json
-    use_signing_config="--signing-config=/tmp/cosign.json"
-  fi
-  
-  #use_signing_config="--signing-config=/tmp/cosign.json"
-     
-  case "$release_cosign_signing_mode" in
-    "key")
-      if [ -z "${release_cosign_private_key:-}" ]; then
-        cibuild_main_err "CIBUILD_RELEASE_COSIGN_PRIVATE_KEY env var must not be empty"
-        exit 1
-      else
-        printf '%s\n' "$release_cosign_private_key" | base64 -d > /tmp/cosign.key
-      fi
-      # first check env for pub key
-      if [ -n "${release_cosign_public_key:-}" ]; then
-        printf '%s\n' "$release_cosign_public_key" | base64 -d > /tmp/cosign.pub
-      else
-        # check repo cosign.pub
-        if [ -f "cosign.pub" ]; then
-          cp cosign.pub /tmp/cosign.pub
-        else
-          cibuild_main_err "cosign.pub not exists"
-          exit 1
-        fi
-      fi
-      sign_args="--key=/tmp/cosign.key"
-      verify_args="--key=/tmp/cosign.pub --private-infrastructure"
-    ;;
-    "keyless")
-      sign_args=""
-      if ! verify_args=$(cibuild_ci_get_cosign_keyless_verify_args); then
-        return 1
-      fi
-    ;;
-    *)
-      cibuild_log_err "cosign signing mode $release_cosign_signing_mode not supported"
-      return 1
-    ;;
-  esac
-
-  local recursive=""
-
-  if [ "${release_cosign_signing_recursive}" = "1" ]; then
-    recursive="--recursive"
-  fi
-
-  while [ "$sign_try" -le "$max_sign_retries" ]; do
-    if cosign sign --yes $sign_args "$@" ${recursive} ${use_signing_config} ${new_bundle_format} "${image}"; then
-      sign_success=1
-      break
-    fi
-    cibuild_log_debug "cosign sign failed (attempt ${sign_try}/${max_sign_retries})"
-    sign_try=$((sign_try + 1))
-    sleep 3
-  done
-
-  if [ "$sign_success" -ne 1 ]; then
-    cibuild_log_err "cosign signing failed after ${max_sign_retries} attempts"
-    return 1
-  fi
-
-  if [ "${release_cosign_verify}" = "1" ]; then
-    cibuild_log_debug "cosign verify $verify_args ${image}"
-    while true; do
-      if cosign verify $verify_args "${image}" >/dev/null 2>&1; then
-        cibuild_log_info "cosign verified after ${waited}s"
-        break
-      fi
-      if [ "$waited" -ge "$max_verify_wait" ]; then
-        cibuild_log_err "signature not available after ${max_verify_wait}s"
-        return 1
-      fi
-      sleep "$verify_interval"
-      waited=$((waited + verify_interval))
-    done
-  fi
-}
-
-cibuild__delete_dsse_sig() {
-  local target_image=$1 \
-        image_digest=$2 \
-        bundle_content=""
-
-  cibuild_log_debug "try to remove dsse referrers for ${target_image}@${image_digest}"
-    regctl -v error artifact list "$target_image@$image_digest" \
-      --format '{{range .Descriptors}}{{.Digest}}{{"\n"}}{{end}}' 2>/dev/null \
-      | while read -r ref_digest; do
-          [ -z "$ref_digest" ] && continue
-          bundle_content=$(regctl -v error manifest get "${target_image}@${ref_digest}" \
-          --format '{{ index .Annotations "dev.sigstore.bundle.content" }}' 2>/dev/null)
-          cibuild_log_debug "found ${bundle_content}"
-          if [ "${bundle_content}" = "dsse-envelope" ]; then
-            cibuild_log_debug "delete dsse manifest: ${target_image}@${ref_digest} if exists"
-            regctl -v error manifest delete "${target_image}@${ref_digest}" 2>/dev/null || true
-          fi
-        done
-}
-
-# signature storage formats:
-#
-# new bundle format (OCI 1.1 referrers):
-#   stored as referrer manifest via subject field, no tag
-#   requires registry referrers API support
-#
-# old bundle format fallback (legacy):
-#   "sha256-DIGEST"     : cosign internal fallback if referrers API not supported
-#                         (new bundle format attempted but registry lacks referrers API)
-#   "sha256-DIGEST.sig" : explicit --new-bundle-format=false
-#                         (required for Harbor UI signature detection as "signature.cosign")
-
-cibuild__remove_signatures() {
-  local target_image=$1 \
-        index_digest=$2 \
-        build_tag=$(cibuild_ci_build_tag) \
-        platforms \
-        build_platforms=$(cibuild_env_get 'build_platforms')
-
-  cibuild_log_debug "remove signatures from ${target_image}@${index_digest}"
-  
-  platforms=$(echo "$build_platforms" | tr ',' ' ')
-
-  # always try to remove any legacy signature tags if already exists for platform images (recursive signed) and index digests (no recursion)
-  
-  # platform images
-  for platform in $platforms; do
-    platform_name=$(echo "$platform" | tr '/' '-')
-    image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}" 2>/dev/null) || true
-    if [ -n "${image_digest:-}" ]; then
-      #cibuild_log_debug "found platform image ${image_digest}"
-      cibuild_log_debug "use cibuild_ci_cleanup_sig_tags for cleanup platform sig tag $platform"
-      cibuild_ci_cleanup_signatures "${target_image}" "${image_digest}"
-    fi
-  done
-
-  # image index
-  cibuild_log_debug "use cibuild_ci_cleanup_sig_tags for cleanup index sig tag"
-  cibuild_ci_cleanup_signatures "${target_image}" "${index_digest}"
-  
-  # now check new bundle format oci 1.1
-  
-  # platform images
-  for platform in $platforms; do
-    platform_name=$(echo "$platform" | tr '/' '-')
-    image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}" 2>/dev/null) || true
-    if [ -n "${image_digest:-}" ]; then
-      cibuild__delete_dsse_sig "${target_image}" "${image_digest}"
-    fi
-  done
-
-  # index
-  cibuild__delete_dsse_sig "${target_image}" "${index_digest}"
-}
+# =============================================================================
+# CREATE INDEX — reads platform digests from artifact-lock files
+# =============================================================================
 
 cibuild__release_create_index() {
-  
   local target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
-        platforms \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         release_docker_attestation_autodetect=$(cibuild_env_get 'release_docker_attestation_autodetect') \
         release_docker_attestation_manifest=$(cibuild_env_get 'release_docker_attestation_manifest') \
         target_registry=$(cibuild_ci_target_registry) \
-        attestation_digest \
-        image_digest \
-        release_cosign_signature=$(cibuild_env_get 'release_cosign_signature') \
-        release_remove_old_signatures=$(cibuild_env_get 'release_remove_old_signatures')
+        signature=$(cibuild_env_get 'release_cosign_signature') \
+        remove_duplicated_signatures=$(cibuild_env_get 'release_cosign_remove_duplicated_signatures') \
+        signing_mode=$(cibuild_env_get 'release_cosign_signing_mode') \
+        signing_config=$(cibuild_env_get 'release_cosign_signing_config') \
+        new_bundle_format=$(cibuild_env_get 'release_cosign_new_bundle_format') \
+        annotations_path="${CIBUILD_LIB_PATH}/cosign_release_annotations.sh" \
+        signing_recursive=$(cibuild_env_get 'release_cosign_signing_recursive') \
+        verify$(cibuild_env_get 'release_cosign_verify') \
+        release_cosign_verify_build_artefacts=$(cibuild_env_get 'release_cosign_verify_build_artefacts')
+    
+  # --- verify all platform images
+  if [ "${release_cosign_verify_build_artefacts:-1}" = "1" ]; then
+    cibuild_verify_all_platforms
+  fi
 
+  # --- build index from lock file digests ---
+  local create_args="" \
+        found=0 \
+        platforms \
+        lock_digest \
+        image_ref
+  
   platforms=$(echo "$build_platforms" | tr ',' ' ')
-
-  local create_args=""
-  local found=0
 
   for platform in $platforms; do
     platform_name=$(echo "$platform" | tr '/' '-')
-    ref="${target_image}:${build_tag}-${platform_name}"
-    # >/dev/null 2>&1
-    if regctl -v error manifest head "$ref"; then
-      create_args="$create_args --ref $ref --platform $platform"
+    lock_digest=$(cibuild_lock_get "${platform_name}" "image_digest") || continue
+    # use digest reference — independent of tag state
+    image_ref="${target_image}@${lock_digest}"
+    if regctl -v error manifest head "${image_ref}" >/dev/null 2>&1; then
+      create_args="$create_args --ref $image_ref --platform $platform"
       found=1
     else
-      cibuild_main_err "missing image $ref, skipping"
+      cibuild_main_err "platform manifest not found in registry: ${image_ref}"
     fi
   done
 
   if [ "$found" -eq 0 ]; then
-    cibuild_main_err "no platform images found, cannot create index ${target_image}:${build_tag}"
+    cibuild_main_err "no platform manifests found — cannot create index"
   fi
 
   local idx_tag="${build_tag}-cibuild-idx"
-  
+
   if ! regctl -v error index create "$target_image:$idx_tag" $create_args; then
     cibuild_main_err "error creating image index ${target_image}:${idx_tag}"
   fi
-  
-  cibuild_log_debug "temporary image index created: ${target_image}:${idx_tag} for $platforms"
-  
+
+  cibuild_log_info "image index created: ${target_image}:${idx_tag}"
+
   if [ "${release_docker_attestation_autodetect}" = "1" ] && [ "${target_registry}" = "docker.io" ]; then
-    cibuild_log_debug "docker.io detected as target_registry set release_docker_attestation_manifest=1"
     release_docker_attestation_manifest=1
   fi
 
   if [ "${release_docker_attestation_manifest}" = "1" ]; then
-    cibuild_log_debug "add docker attestation manifest"
-    # only one platform is required for referencing
-    # if linux/amd64 is not found first platform in array is used
-    set -- $platforms
-    first=$1
-    value=linux/amd64
-
+    set -- $platforms; first=$1; value=linux/amd64
     case " $platforms " in
       *" $value "*) platform="$value" ;;
       *) platform="$first" ;;
     esac
     platform_name=$(echo "${platform}" | tr '/' '-')
-    
-    cibuild_log_debug "${target_image}:${build_tag}-${platform_name}"
-    
-    attestation_digest=$(cibuild__get_docker_attestation_digest "${target_image}" "${build_tag}" "${platform_name}")
-    cibuild_log_debug "attestation: $attestation_digest"
-    
-    image_digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}")
-
+    local attestation_digest image_digest
+    image_digest=$(cibuild_lock_get "${platform_name}" "image_digest")
+    attestation_digest=$(cibuild__get_docker_attestation_digest "${target_image}" "${image_digest}")
     if ! regctl -v error index add "${target_image}:${idx_tag}" \
       --ref "${target_image}@${attestation_digest}" \
       --desc-platform unknown/unknown \
@@ -457,125 +193,120 @@ cibuild__release_create_index() {
       cibuild_main_err "error adding docker attestation manifest"
     fi
   fi
-  
-  # save this to internal variable, don't use build_tag anymore it is just a pointer to the final digest
-  cibuild__target_digest=$(regctl -v error manifest head "${target_image}:${idx_tag}")
-  cibuild_log_debug "new index digest: $cibuild__target_digest"
 
-  # set build_tag
-  if ! regctl -v error image copy ${target_image}@${cibuild__target_digest} ${target_image}:${build_tag} >/dev/null 2>&1; then
-    cibuild_log_err "failed to set ${target_image}:${build_tag} to ${target_image}@${cibuild__target_digest}"
+  cibuild__target_digest=$(regctl -v error manifest head "${target_image}:${idx_tag}")
+  cibuild_log_info "index digest: ${cibuild__target_digest}"
+
+  if ! regctl -v error image copy \
+    ${target_image}@${cibuild__target_digest} \
+    ${target_image}:${build_tag} >/dev/null 2>&1; then
+    cibuild_log_err "failed to set ${target_image}:${build_tag}"
   fi
 
-  if [ "${release_cosign_signature:-0}" = "1" ]; then
-    if [ "${release_remove_old_signatures:-1}" = "1" ]; then
-      cibuild__remove_signatures ${target_image} ${cibuild__target_digest}
+  if [ "${remove_duplicated_signatures:-1}" = "1" ]; then
+    cibuild_remove_signatures "${target_image}" "${cibuild__target_digest}"
+  fi
+  
+  image_ref="${target_image}@${cibuild__target_digest}"
+
+  if [ "${signature:-1}" = "1" ]; then
+    cibuild_log_info "signing platform image ${image_ref}"
+  
+    if ! cibuild_sign  "${image_ref}" \
+                "${signing_mode}" \
+                "${signing_config}" \
+                "${new_bundle_format}" \
+                "${annotations_path}" \
+                "${signing_recursive}"; then
+      cibuild_main_err "cibuild_sign failed: ${image_ref}"
     fi
-    cibuild__sign "${target_image}@${cibuild__target_digest}"
+  fi
+
+  if [ "${verify:-1}" = "1" ]; then
+    cibuild_log_info "verifying platform image ${image_ref}"
+    if ! cibuild_verify "${image_ref}" \
+                 "${signing_mode}" \
+                 "${new_bundle_format}"; then
+      cibuild_main_err "cibuild_verify failed: ${image_ref}"
+    fi
   fi
 }
+
+# =============================================================================
+# IMAGE TAGS / MINOR TAG / VERSION TAGS (unchanged)
+# =============================================================================
 
 cibuild__release_image_tags() {
   local reg=$1
   local release_image_tags=${2:-$(cibuild_env_get 'release_image_tags')}
   local build_tag=$(cibuild_ci_build_tag)
   local tag
-
-  IFS=',;'
-  set -- $release_image_tags
-  unset IFS
-  
+  IFS=',;'; set -- $release_image_tags; unset IFS
   for tag; do
     case "$tag" in
-      *__MINORTAG__*)
-      cibuild__release_minortag_template="$tag"
-      continue
-      ;;
+      *__MINORTAG__*) cibuild__release_minortag_template="$tag"; continue ;;
       *)
-      local processed_tag=$(cibuild_ci_process_tag "$tag")
-      cibuild_log_debug "adding addtional tag $processed_tag"
-      if ! cibuild__release_copy_tag "$processed_tag" "$reg"; then
-        cibuild_log_err "error assigning additional tag $processed_tag"
-        continue
-      fi
-      ;;
+        local processed_tag=$(cibuild_ci_process_tag "$tag")
+        cibuild__release_copy_tag "$processed_tag" "$reg" || \
+          cibuild_log_err "error assigning tag $processed_tag"
+        ;;
     esac
   done
-
 }
 
 cibuild__release_minor_tag() {
   local reg=$1
   local release_minor_tag_regex=$(cibuild_env_get 'release_minor_tag_regex')
+  [ -z "${release_minor_tag_regex:-}" ] && return 0
+  [ -z "${cibuild__release_minortag}" ] && ! cibuild__get_minor_tag && return 1
+  cibuild__release_copy_tag "$cibuild__release_minortag" "${reg}"
+}
 
-  if [ -z "${release_minor_tag_regex:-}" ]; then
-    cibuild_log_debug "no minor tag regex defined. skipping release_minor_tag"
-    return 0
-  fi
+cibuild__release_nix_version_tags() {
+  local reg=$1
+  local build_client=$(cibuild_env_get 'build_client')
+  [ "${build_client}" = "nix" ] || return 0
 
-  if [ -z "${cibuild__release_minortag}" ]; then
-    if ! cibuild__get_minor_tag; then
-      cibuild_log_err "error getting minortag"
-      return 1
-    fi
-  fi
-  if ! cibuild__release_copy_tag "$cibuild__release_minortag" "${reg}"; then
-    return 1
-  else
-    cibuild_log_debug "adding addtional tag ${cibuild__release_minortag}"
-    return 0
-  fi
+  local target_image build_tag full_version minor_version variant
+  target_image=$(cibuild_ci_target_image)
+  build_tag=$(cibuild_ci_build_tag)
+
+  full_version=$(regctl image config \
+    "${target_image}:${build_tag}" \
+    --format '{{index .Config.Labels "org.opencontainers.image.version"}}' \
+    2>/dev/null | tr -d '[:space:]' || echo "")
+
+  [ -z "${full_version}" ] && return 0
+
+  minor_version=$(printf '%s\n' "${full_version}" | cut -d'.' -f1,2)
+  variant=$(printf '%s\n' "$(cibuild_ci_build_tag)" | cut -d'-' -f2-)
+
+  cibuild_log_info "nix version tags: ${full_version} (patch), ${minor_version} (minor)"
+  cibuild__release_copy_tag "${full_version}-${variant}" "${reg}" || true
+  cibuild__release_copy_tag "${minor_version}-${variant}" "${reg}" || true
 }
 
 cibuild__release_create_regctl_auth_config() {
-  
-  local logged_in=" "\
-        reg
-
+  local logged_in=" "
   for registry in base_registry target_registry release_registry ci_registry; do
     case "$registry" in
-      base_registry)
-        local reg=$(cibuild_core_base_registry)
-        local auth=$(cibuild_ci_base_registry_auth)
-        local user=$(cibuild_ci_base_registry_user)
-        local pass=$(cibuild_ci_base_registry_pass)
-      ;;
-      target_registry)
-        local reg=$(cibuild_ci_target_registry)
-        local auth=$(cibuild_ci_target_registry_auth)
-        local user=$(cibuild_ci_target_registry_user)
-        local pass=$(cibuild_ci_target_registry_pass)
-      ;;
-      release_registry)
-        local reg=$(cibuild_ci_release_registry)
-        local auth=$(cibuild_ci_release_registry_auth)
-        local user=$(cibuild_ci_release_registry_user)
-        local pass=$(cibuild_ci_release_registry_pass)
-      ;;
-      ci_registry)
-        local reg=$(cibuild_ci_registry)
-        local auth=$(cibuild_ci_registry_auth)
-        local user=$(cibuild_ci_registry_user)
-        local pass=$(cibuild_ci_registry_pass)
-      ;;
+      base_registry)    local reg=$(cibuild_core_base_registry);     local auth=$(cibuild_ci_base_registry_auth);    local user=$(cibuild_ci_base_registry_user);    local pass=$(cibuild_ci_base_registry_pass) ;;
+      target_registry)  local reg=$(cibuild_ci_target_registry);     local auth=$(cibuild_ci_target_registry_auth);  local user=$(cibuild_ci_target_registry_user);  local pass=$(cibuild_ci_target_registry_pass) ;;
+      release_registry) local reg=$(cibuild_ci_release_registry);    local auth=$(cibuild_ci_release_registry_auth); local user=$(cibuild_ci_release_registry_user); local pass=$(cibuild_ci_release_registry_pass) ;;
+      ci_registry)      local reg=$(cibuild_ci_registry);            local auth=$(cibuild_ci_registry_auth);         local user=$(cibuild_ci_registry_user);         local pass=$(cibuild_ci_registry_pass) ;;
     esac
-    if case " $logged_in " in *" $reg "*) true ;; *) false ;; esac; then
-      cibuild_log_debug "already logged in: $reg"
-    else
-      if [ "$auth" = "1" ]; then
-        regctl registry set "$reg" --hostname "$reg" --skip-check
-        regctl registry login "$reg" --user "$user" --pass "$pass" --skip-check
-        logged_in="$logged_in $reg"
-      fi
+    case " $logged_in " in *" $reg "*) cibuild_log_debug "already logged in: $reg"; continue ;; esac
+    if [ "$auth" = "1" ]; then
+      regctl registry set "$reg" --hostname "$reg" --skip-check
+      regctl registry login "$reg" --user "$user" --pass "$pass" --skip-check
+      logged_in="$logged_in $reg"
     fi
   done
   regctl registry config
 }
 
 cibuild__mirror_registry_get_var() {
-  local reg="$1"
-  local key="$2"
-  prefix="CIBUILD_RELEASE_MIRROR_REGISTRY"
+  local reg="$1" key="$2" prefix="CIBUILD_RELEASE_MIRROR_REGISTRY"
   if [ -n "$key" ]; then
     env | grep "^${prefix}_${reg}_${key}=" | cut -d'=' -f2-
   else
@@ -588,216 +319,94 @@ cibuild__release_mirrors() {
         target_image=$(cibuild_ci_target_image) \
         target_image_path=$(cibuild_ci_target_image_path)
 
-  registries=$(env | grep -E '^CIBUILD_RELEASE_MIRROR_REGISTRY_[A-Z]+=' | sed 's/^CIBUILD_RELEASE_MIRROR_REGISTRY_//' | sed 's/=.*//')
-  
+  local registries
+  registries=$(env | grep -E '^CIBUILD_RELEASE_MIRROR_REGISTRY_[A-Z]+=' \
+    | sed 's/^CIBUILD_RELEASE_MIRROR_REGISTRY_//' | sed 's/=.*//')
+
   for registry in $registries; do
-    cibuild_log_debug "get keys for mirror ${registry}"
     local reg=$(cibuild__mirror_registry_get_var "${registry}") \
-      user=$(cibuild__mirror_registry_get_var "${registry}" "USER") \
-      pass=$(cibuild__mirror_registry_get_var "${registry}" "PASS") \
-      _image_path=$(cibuild__mirror_registry_get_var "${registry}" "IMAGE_PATH") \
-      _keep_build_tag=$(cibuild__mirror_registry_get_var "${registry}" "KEEP_BUILD_TAG") \
-      _keep_image_tags=$(cibuild__mirror_registry_get_var "${registry}" "KEEP_IMAGE_TAGS") \
-      image_tags=$(cibuild__mirror_registry_get_var "${registry}" "IMAGE_TAGS")
+          user=$(cibuild__mirror_registry_get_var "${registry}" "USER") \
+          pass=$(cibuild__mirror_registry_get_var "${registry}" "PASS") \
+          _image_path=$(cibuild__mirror_registry_get_var "${registry}" "IMAGE_PATH") \
+          _keep_build_tag=$(cibuild__mirror_registry_get_var "${registry}" "KEEP_BUILD_TAG") \
+          _keep_image_tags=$(cibuild__mirror_registry_get_var "${registry}" "KEEP_IMAGE_TAGS") \
+          image_tags=$(cibuild__mirror_registry_get_var "${registry}" "IMAGE_TAGS")
 
-    keep_build_tag=${_keep_build_tag:-1}
-    keep_image_tags=${_keep_image_tags:-1}
+    local keep_build_tag=${_keep_build_tag:-1}
+    local keep_image_tags=${_keep_image_tags:-1}
 
-    if [ "${keep_build_tag}" = "0" ] && [ "${keep_image_tags}" = "0" ] && [ -z "${image_tags:-}" ] ; then
-      cibuild_log_err "can not get tags for mirror, set at least KEEP_BUILD_TAG=1, KEEP_IMAGE_TAGS=1 or custom IMAGE_TAGS"
+    if [ "${keep_build_tag}" = "0" ] && [ "${keep_image_tags}" = "0" ] && [ -z "${image_tags:-}" ]; then
+      cibuild_log_err "cannot get tags for mirror — set KEEP_BUILD_TAG=1, KEEP_IMAGE_TAGS=1, or IMAGE_TAGS"
       return 1
     fi
 
-    # login
-    if [ -f "${HOME}/.regctl/config.json" ]; then
-      cibuild_log_debug "removing regctl credentials"
-      rm "${HOME}/.regctl/config.json"
-    fi
+    [ -f "${HOME}/.regctl/config.json" ] && rm "${HOME}/.regctl/config.json"
     if [ -n "${user}" ] && [ -n "${pass}" ]; then
       regctl registry set "$reg" --hostname "$reg" --skip-check
       regctl registry login "$reg" --user "$user" --pass "$pass" --skip-check
-      regctl registry config
     fi
 
     local image_path=${_image_path:-$target_image_path}
     local mirror_image="${reg}/${image_path}"
 
-    if ! regctl -v error image copy --referrers --digest-tags ${target_image}@${cibuild__target_digest} ${mirror_image}@${cibuild__target_digest} >/dev/null 2>&1; then
-      cibuild_log_err "failed to copy ${target_image}@${cibuild__target_digest} to ${mirror_image}@${cibuild__target_digest}"
+    if ! regctl -v error image copy \
+      --referrers --digest-tags \
+      ${target_image}@${cibuild__target_digest} \
+      ${mirror_image}@${cibuild__target_digest} >/dev/null 2>&1; then
+      cibuild_log_err "failed to copy to mirror ${mirror_image}"
       return 1
     fi
 
-    if [ "${keep_build_tag:-1}" = "1" ]; then
-      if ! regctl -v error image copy ${mirror_image}@${cibuild__target_digest} ${mirror_image}:${build_tag} >/dev/null 2>&1; then
-        cibuild_log_err "failed to set tag ${mirror_image}:${build_tag}"
-        return 1
-      fi
-    fi
-    if [ "${keep_image_tags:-1}" = "1" ]; then
-      cibuild__release_image_tags "${mirror_image}"
-    else
+    [ "${keep_build_tag:-1}" = "1" ] && \
+      regctl -v error image copy \
+        ${mirror_image}@${cibuild__target_digest} \
+        ${mirror_image}:${build_tag} >/dev/null 2>&1 || true
+
+    [ "${keep_image_tags:-1}" = "1" ] && \
+      cibuild__release_image_tags "${mirror_image}" || \
       cibuild__release_image_tags "${mirror_image}" "${image_tags}"
-    fi
+
     cibuild__release_minor_tag "${mirror_image}"
+    cibuild__release_nix_version_tags "${mirror_image}"
   done
-}
-
-cibuild__release_sbom() {
-  local platform_name=$1 \
-        image_ref=$2 \
-        platform=$3 \
-        release_sbom_formats=$(cibuild_env_get 'release_sbom_formats') \
-        output_dir="${CIBUILD_OUTPUT_DIR:-.}" \
-        fmt \
-        sbom_ext
-
-  if ! command -v trivy >/dev/null 2>&1; then
-    cibuild_log_err "trivy not found — skipping SBOM (non-fatal)"
-    return 0
-  fi
-
-  # SBOM only — no vulnerability scan, no DB download needed
-  # loop over comma-separated formats: spdx-json,cyclonedx-json
-  for fmt in $(echo "${release_sbom_formats}" | tr ',' ' '); do
-    case "${fmt}" in
-      spdx-json)      sbom_ext="spdx.json" ;;
-      cyclonedx)      sbom_ext="cdx.json"  ;;
-      cyclonedx-json) sbom_ext="cdx.json"  ;;
-      spdx)           sbom_ext="spdx"      ;;
-      *)              sbom_ext="sbom.json" ;;
-    esac
-
-    cibuild_log_info "generating SBOM via trivy (${fmt}) for ${platform_name}"
-
-    trivy image \
-      --platform "${platform}" \
-      --format "${fmt}" \
-      --scanners "" \
-      --output "${output_dir}/sbom-${platform_name}.${sbom_ext}" \
-      --quiet \
-      "${image_ref}" || \
-      cibuild_log_err "trivy SBOM (${fmt}) failed (non-fatal)"
-
-    cibuild_log_info "SBOM written to ${output_dir}/sbom-${platform_name}.${sbom_ext}"
-  done
-}
-
-cibuild__release_vuln() {
-  local platform_name=$1 \
-        image_ref=$2 \
-        platform=$3 \
-        release_vuln=$(cibuild_env_get 'release_vuln') \
-        release_vuln_format=$(cibuild_env_get 'release_vuln_format') \
-        output_dir="${CIBUILD_OUTPUT_DIR:-.}"
-
-  [ "${release_vuln}" = "1" ] || return 0
-
-  if ! command -v trivy >/dev/null 2>&1; then
-    cibuild_log_err "trivy not found — skipping vulnerability scan (non-fatal)"
-    return 0
-  fi
-
-  cibuild_log_info "running vulnerability scan via trivy for ${platform_name}"
-
-  trivy image \
-    --platform "${platform}" \
-    --format "${release_vuln_format:-json}" \
-    --scanners vuln \
-    --output "${output_dir}/vuln-${platform_name}.json" \
-    --quiet \
-    "${image_ref}" || \
-    cibuild_log_err "trivy vulnerability scan failed (non-fatal)"
-
-  cibuild_log_info "vulnerability report written to ${output_dir}/vuln-${platform_name}.json"
-}
-
-cibuild__release_write_summary() {
-  local target_image=$(cibuild_ci_target_image) \
-        build_tag=$(cibuild_ci_build_tag) \
-        build_platforms=$(cibuild_env_get 'build_platforms') \
-        release_sbom=$(cibuild_env_get 'release_sbom') \
-        output_dir="${CIBUILD_OUTPUT_DIR:-.}" \
-        release_cosign_signing_mode=$(cibuild_env_get 'release_cosign_signing_mode')
-
-  # ensure output dir exists
-  mkdir -p "${output_dir}"
-
-  digests_json="{}"
-  for platform in $(echo "$build_platforms" | tr ',' ' '); do
-    platform_name=$(echo "$platform" | tr '/' '-')
-    #digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}")
-    digest=$(regctl -v error manifest head "${target_image}:${build_tag}-${platform_name}" --platform "${platform}")
-    digests_json=$(echo "$digests_json" | jq --arg p "$platform" --arg d "$digest" '.[$p]=$d')
-  done
-
-  jq -n \
-    --arg index "${cibuild__target_digest}" \
-    --arg image "${target_image}" \
-    --arg tag "${build_tag}" \
-    --argjson platforms "$digests_json" \
-    '{index: $index, image: $image, tag: $tag, platforms: $platforms}' \
-    > "${output_dir}/digests.json"
-
-  for platform in $(echo "$build_platforms" | tr ',' ' '); do
-    platform_name=$(echo "$platform" | tr '/' '-')
-    ref="${target_image}:${build_tag}-${platform_name}"
-    if [ "${release_sbom}" = "1" ]; then
-      cibuild__release_sbom "${platform_name}" "${ref}" "${platform}"
-    fi
-    cibuild__release_vuln "${platform_name}" "${ref}" "${platform}"
-    cibuild__release_provenance "${platform_name}" "${ref}"
-  done
-
-  if [ "${release_cosign_signing_mode}" = "keyless" ]; then
-    cosign download signature "${target_image}:${build_tag}" | jq > "${output_dir}/cert.json"
-  fi
-
-  cibuild_log_info "release summary written to ${output_dir}"
-  ls -lat "${output_dir}"
-
-  # gitlab only: upload artifacts to package registry
-  # enabled via CIBUILD_RELEASE_UPLOAD_SUPPLY_CHAIN_ARTIFACTS=package
-  if cibuild_function_exists cibuild_ci_upload_supply_chain_artifacts; then
-    cibuild_ci_upload_supply_chain_artifacts || true
-  fi
-
 }
 
 cibuild__release_clean_tags() {
   local target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
-        platforms \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         release_keep_platform_tags=$(cibuild_env_get 'release_keep_platform_tags') \
         release_keep_idx_tag=$(cibuild_env_get 'release_keep_idx_tag')
 
+  local platforms idx_tag="${build_tag}-cibuild-idx"
   platforms=$(echo "$build_platforms" | tr ',' ' ')
-  
-  local idx_tag="${build_tag}-cibuild-idx"
 
-  if [ "$release_keep_idx_tag" = "0" ]; then
-    cibuild_log_debug "try to delete ${target_image}:${idx_tag}"
-    cibuild_ci_cleanup_tag "${target_image}" "${idx_tag}"
-  fi
+  [ "$release_keep_idx_tag" = "0" ] && cibuild_ci_cleanup_tag "${target_image}" "${idx_tag}"
 
   if [ "${release_keep_platform_tags}" = "0" ]; then
     for platform in $platforms; do
       platform_name=$(echo "$platform" | tr '/' '-')
-      cibuild_log_debug "try to delete ${target_image}:${build_tag}-${platform_name}"
       cibuild_ci_cleanup_tag "${target_image}" "${build_tag}-${platform_name}"
     done
   fi
 }
 
+# =============================================================================
+# RELEASE RUN ENTRYPOINT
+# =============================================================================
+
 cibuild_release_run() {
   local release_enabled=$(cibuild_env_get 'release_enabled') \
-        release_cosign_signature=$(cibuild_env_get 'release_cosign_signature') \
-        release_cosign_private_key=$(cibuild_env_get 'release_cosign_private_key') \
-        release_cosign_public_key=$(cibuild_env_get 'release_cosign_public_key')
+        signature=$(cibuild_env_get 'release_cosign_signature') \
+        local build_client=$(cibuild_env_get 'build_client')
 
   if [ "${release_enabled:?}" != "1" ]; then
-    cibuild_log_info "release run not enabled: release run skipped"
+    cibuild_log_info "release run not enabled: skipped"
     return
+  fi
+
+  if [ "${signature:-1}" = "1" ]; then
+    cibuild_check_signing_env
   fi
 
   if ! cibuild_core_run_script release pre; then
@@ -805,18 +414,16 @@ cibuild_release_run() {
   fi
 
   cibuild__release_create_index
-  
-  # target reg
+
   cibuild__release_image_tags
-  cibuild__release_minor_tag
+  if [ "${build_client}" = "nix" ]; then
+    cibuild__release_nix_version_tags
+  else
+    cibuild__release_minor_tag
+  fi
   
-  # mirror regs
   cibuild__release_mirrors
 
-  # write summary
-  cibuild__release_write_summary
-
-  # clean tags
   cibuild__release_clean_tags
 
   if ! cibuild_core_run_script release post; then

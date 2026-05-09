@@ -1,7 +1,5 @@
 #!/bin/sh
-
 ## run cibuild in cibuilder image
-
 set -eu
 
 . ~/.config/cibuild/.env
@@ -53,7 +51,6 @@ LOCAL_ENTRYPOINT=""
 LOCAL_BUILDCTL_DAEMONLESS=""
 LOCAL_LOCKED_VOLUME=""
 LOCAL_PRIVILEGED="--privileged"
-
 if [ "${CIBUILDER_PRIVILEGED:-1}" = "0" ]; then
   LOCAL_PRIVILEGED=""
 fi
@@ -73,7 +70,6 @@ if [ "${CIBUILDER_LOCKED}" = "1" ]; then
 fi
 
 set -x
-
 docker run \
   --rm \
   --network ${COMPOSE_PROJECT_NAME}-net \
@@ -83,6 +79,8 @@ docker run \
   ${LOCAL_ENTRYPOINT} \
   ${LOCAL_BUILDCTL_DAEMONLESS} \
   ${LOCAL_LOCKED_VOLUME} \
+  -v cibuilder-nix-store:/nix/store \
+  -v cibuilder-nix-db:/nix/var/nix/db \
   -v cibuilder-trivy-cache:/home/cibuilder/.cache/trivy \
   -v .:/repo \
   -w /repo \

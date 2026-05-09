@@ -171,6 +171,95 @@ prepare() {
   fi
 }
 
+# =============================================================================
+# setup_attic — start Attic, create cache bucket, generate token
+#
+# Called only when NIX_ENABLED=1.
+# Idempotent: skips token/cache creation if CIBUILD_NIX_CACHE_TOKEN is already
+# set in .env — safe to re-run install.sh.
+# =============================================================================
+setup_attic() {
+  echo "==> Setting up Attic Nix Binary Cache..."
+
+  ATTIC_CONTAINER="${COMPOSE_PROJECT_NAME}-attic"
+
+  docker volume inspect ${COMPOSE_PROJECT_NAME}-attic-storage > /dev/null 2>&1 \
+    || docker volume create ${COMPOSE_PROJECT_NAME}-attic-storage
+  docker volume inspect ${COMPOSE_PROJECT_NAME}-attic-db > /dev/null 2>&1 \
+    || docker volume create ${COMPOSE_PROJECT_NAME}-attic-db
+
+  docker pull ghcr.io/zhaofengli/attic:latest
+  docker compose -f docker-compose.attic.yaml down
+  docker compose -f docker-compose.attic.yaml up -d
+
+  # wait for healthy
+  echo "    waiting for Attic to become healthy..."
+  tries=0
+  while [ $tries -lt 30 ]; do
+    status=$(docker inspect "${ATTIC_CONTAINER}" \
+      --format='{{.State.Health.Status}}' 2>/dev/null || echo "starting")
+    [ "$status" = "healthy" ] && break
+    tries=$((tries + 1))
+    sleep 2
+  done
+
+  if [ "$status" != "healthy" ]; then
+    echo "    ERROR: Attic did not become healthy in time"
+    exit 1
+  fi
+
+  echo "    Attic healthy"
+
+  # skip if token already configured — idempotent re-runs
+  if grep -q "^CIBUILD_NIX_CACHE_TOKEN=.\+" .env; then
+    echo "    CIBUILD_NIX_CACHE_TOKEN already set — skipping token/cache creation"
+    return
+  fi
+
+  echo "    creating token..."
+  # token grants pull + push + cache management for the 'nixpkgs' cache
+  ATTIC_TOKEN=$(docker exec "${ATTIC_CONTAINER}" \
+    atticadm make-token \
+      --config /attic/server.toml \
+      --sub "cibuilder" \
+      --validity "52w" \
+      --pull "nixpkgs" \
+      --push "nixpkgs" \
+      --create-cache "nixpkgs" \
+      --configure-cache "nixpkgs" \
+      --delete "nixpkgs")
+  
+  echo ""
+  echo "    ============================================================"
+  echo "    ACTION REQUIRED: create the Attic cache bucket"
+  echo ""
+  echo "    Run once on this machine:"
+  echo ""
+  echo "      attic login local http://127.0.0.1:${ATTIC_PORT} ${ATTIC_TOKEN}"
+  echo "      attic cache create nixpkgs"
+  echo ""
+  echo "    If attic is not installed locally:"
+  echo ""
+  echo "      nix run github:zhaofengli/attic#default -- login local http://127.0.0.1:${ATTIC_PORT} ${ATTIC_TOKEN}"
+  echo "      nix run github:zhaofengli/attic#default -- cache create nixpkgs"
+  echo ""
+  echo "    A helper script has been written to: ./setup-attic-cache.sh"
+  echo "    ============================================================"
+  echo ""
+
+  # setup-attic-cache.sh is shipped alongside install.sh — run it once after install
+
+  # cache is created manually via setup-attic-cache.sh — no verify here
+
+  # write to .env
+  sed -i "s|^CIBUILD_NIX_CACHE_TOKEN=.*|CIBUILD_NIX_CACHE_TOKEN=${ATTIC_TOKEN}|g" .env
+  sed -i "s|^CIBUILD_NIX_CACHE_URL=.*|CIBUILD_NIX_CACHE_URL=http://${COMPOSE_PROJECT_NAME}-attic:8080/nixpkgs|g" .env
+
+  echo "    token and cache URL written to .env"
+  echo "    Attic ready at http://127.0.0.1:${ATTIC_PORT} (host)"
+  echo "    Attic ready at http://${COMPOSE_PROJECT_NAME}-attic:8080 (within cibuilder-net)"
+}
+
 install() {
   if [ ! -d ~/.local/bin ]; then
     echo "Creating ~/.local/bin"
@@ -191,7 +280,6 @@ install() {
   fi
 
   # pull and start containers
-  # docker pull      ${CIBUILDER_IMAGE}:${CIBUILDER_REF}
   docker volume    inspect ${COMPOSE_PROJECT_NAME}-registry-data > /dev/null 2>&1 || docker volume  create ${COMPOSE_PROJECT_NAME}-registry-data
   docker network   inspect ${COMPOSE_PROJECT_NAME}-net           > /dev/null 2>&1 || docker network create ${COMPOSE_PROJECT_NAME}-net
   
@@ -207,54 +295,7 @@ install() {
 
   # Attic Nix Binary Cache — independent of DIND
   if [ "${NIX_ENABLED:-0}" = "1" ]; then
-    echo "==> Setting up Attic Nix Binary Cache..."
-
-    docker volume inspect ${COMPOSE_PROJECT_NAME}-attic-storage > /dev/null 2>&1 || docker volume create ${COMPOSE_PROJECT_NAME}-attic-storage
-    docker volume inspect ${COMPOSE_PROJECT_NAME}-attic-db      > /dev/null 2>&1 || docker volume create ${COMPOSE_PROJECT_NAME}-attic-db
-
-    docker pull ghcr.io/zhaofengli/attic:latest
-    docker compose -f docker-compose.attic.yaml down
-    docker compose -f docker-compose.attic.yaml up -d
-
-    # wait for healthy
-    echo "    waiting for attic..."
-    ATTIC_CONTAINER="${COMPOSE_PROJECT_NAME}-attic"
-    tries=0
-    while [ $tries -lt 30 ]; do
-      status=$(docker inspect "${ATTIC_CONTAINER}" --format='{{.State.Health.Status}}' 2>/dev/null || echo "starting")
-      [ "$status" = "healthy" ] && break
-      tries=$((tries + 1))
-      sleep 2
-    done
-
-    # generate token if not already set
-    if ! grep -q "^CIBUILD_NIX_CACHE_TOKEN=" .env || grep -q "^CIBUILD_NIX_CACHE_TOKEN=$" .env; then
-      echo "    create CIBUILD_NIX_CACHE_TOKEN..."
-      ATTIC_TOKEN=$(docker exec "${ATTIC_CONTAINER}" \
-          atticadm make-token \
-          --config /attic/server.toml \
-          --sub "cibuilder" \
-          --validity "52w" \
-          --push "nixpkgs" \
-          --pull "nixpkgs" \
-          --create-cache "nixpkgs" \
-          --configure-cache "nixpkgs" \
-          2>/dev/null)
-      
-      # create cache bucket
-      docker exec "${ATTIC_CONTAINER}" \
-        attic login local http://localhost:8080 "${ATTIC_TOKEN}" > /dev/null 2>&1 || true
-      docker exec "${ATTIC_CONTAINER}" \
-        attic cache create nixpkgs > /dev/null 2>&1 || true
-
-      sed -i "s|^CIBUILD_NIX_CACHE_TOKEN=.*|CIBUILD_NIX_CACHE_TOKEN=${ATTIC_TOKEN}|g" .env
-      # write cache URL — internal cibuilder-net address for cibuilder container
-      sed -i "s|^CIBUILD_NIX_CACHE_URL=.*|CIBUILD_NIX_CACHE_URL=http://${COMPOSE_PROJECT_NAME}-attic:8080/nixpkgs|g" .env
-      echo "    token and cache URL written to .env"
-    fi
-
-    echo "    Attic ready at http://127.0.0.1:${ATTIC_PORT} (host)"
-    echo "    Attic ready at http://${COMPOSE_PROJECT_NAME}-attic:8080 (within cibuilder-net)"
+    setup_attic
   fi
 
   if ! command -v k3d >/dev/null 2>&1; then

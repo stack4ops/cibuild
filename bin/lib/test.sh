@@ -376,10 +376,13 @@ assert_response() {
   local test_backend=$(cibuild_env_get 'test_backend') \
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
-        platform_name=$(cibuild_core_get_platform_name)
-        
+        platform_name=$(cibuild_core_get_platform_name) \
+        lock_digest
+  
+  lock_digest=$(cibuild_lock_get "${platform_name}" "image_digest")
+
   _test_id=$((1000 + RANDOM % 9999))
-  _test_image="${target_image}:${build_tag}-${platform_name}"
+  _test_image="${target_image}@${lock_digest}"
   _container="testrun-${_test_id}"
   _pod="testrun-${_test_id}"
 
@@ -416,10 +419,13 @@ assert_log() {
   local test_backend=$(cibuild_env_get 'test_backend') \
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
-        platform_name=$(cibuild_core_get_platform_name)
+        platform_name=$(cibuild_core_get_platform_name) \
+        lock_digest
+  
+  lock_digest=$(cibuild_lock_get "${platform_name}" "image_digest")
 
   _test_id=$((1000 + RANDOM % 9999))
-  _test_image="${target_image}:${build_tag}-${platform_name}"
+  _test_image="${target_image}@${lock_digest}"
   _container="testrun-${_test_id}"
   _pod="testrun-${_test_id}"
 
@@ -456,10 +462,16 @@ cibuild__test_image() {
   
   cibuild_log_debug "test mode: $mode"
 
-  local test_script_file
-  local test_assert_file
-  test_script_file=$(cibuild_env_get 'test_script_file')
-  test_assert_file=$(cibuild_env_get 'test_assert_file')
+  local test_script_file \
+        test_assert_file \
+        test_script_file=$(cibuild_env_get 'test_script_file') \
+        test_assert_file=$(cibuild_env_get 'test_assert_file') \
+        test_cosign_verify_build_artefacts=$(cibuild_env_get 'test_cosign_verify_build_artefacts')
+
+  # --- verify all platform images
+  if [ "${test_cosign_verify_build_artefacts:-1}" = "1" ]; then
+    cibuild_verify_all_platforms
+  fi
 
   case "$mode" in
     script)

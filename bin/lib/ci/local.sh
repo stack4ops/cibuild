@@ -310,3 +310,28 @@ cibuild__ci_init() {
 }
 
 cibuild__ci_init
+
+# Commit artifact-lock.<platform>.json locally (for testing).
+# Uses [skip ci] convention in commit message.
+cibuild_ci_commit_lock_file() {
+  local lock_file="$1"
+
+  if [ ! -f "${lock_file}" ]; then
+    cibuild_log_err "cibuild_ci_commit_lock_file: ${lock_file} not found"
+    return 1
+  fi
+
+  git config --global safe.directory '*'
+  git config user.email "cibuild@local" 2>/dev/null || true
+  git config user.name  "cibuild-local" 2>/dev/null || true
+
+  git add "${lock_file}"
+
+  if git diff --cached --quiet; then
+    cibuild_log_info "artifact-lock unchanged, no commit needed: ${lock_file}"
+    return 0
+  fi
+
+  git commit -m "chore(lock): update ${lock_file} [skip ci]"
+  cibuild_log_info "artifact-lock committed locally: ${lock_file} (no push in local adapter)"
+}

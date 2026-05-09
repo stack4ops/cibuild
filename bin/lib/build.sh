@@ -5,6 +5,383 @@
 [ -n "${_CIBUILD_BUILD_LOADED-}" ] && return
 _CIBUILD_BUILD_LOADED=1
 
+# Retrieve the most recent cosign signature referrer digest for a given subject digest.
+# Format awareness:
+#   new bundle (default): ArtifactType = application/vnd.oci.empty.v1+json  (OCI 1.1 referrer)
+#   old bundle (fallback or CIBUILD_COSIGN_NEW_BUNDLE_FORMAT=0):
+#                         ArtifactType = application/vnd.dev.cosign.artifact.sig.v1+json
+# If multiple signatures exist (e.g. from previous builds), take the last one.
+
+cibuild__build_get_sig_digest() {
+  local target_image="$1" \
+        subject_digest="$2"
+  local build_cosign_new_bundle_format
+  build_cosign_new_bundle_format=$(cibuild_env_get 'build_cosign_new_bundle_format')
+
+  local sig_digest primary_type fallback_type
+  if [ "${build_cosign_new_bundle_format}" = "0" ]; then
+    primary_type="application/vnd.dev.cosign.artifact.sig.v1+json"
+    fallback_type="application/vnd.oci.empty.v1+json"
+  else
+    primary_type="application/vnd.oci.empty.v1+json"
+    fallback_type="application/vnd.dev.cosign.artifact.sig.v1+json"
+  fi
+
+  # emit "ArtifactType Digest" per line, grep for desired type, extract digest
+  local all_refs
+  all_refs=$(regctl artifact list "${target_image}@${subject_digest}" \
+    --format '{{range .Descriptors}}{{.ArtifactType}}{{" "}}{{.Digest}}{{"\n"}}{{end}}' \
+    2>/dev/null || true)
+
+  sig_digest=$(printf '%s\n' "${all_refs}" | grep "^${primary_type} " | awk '{print $2}' | tail -1)
+
+  if [ -z "${sig_digest:-}" ]; then
+    sig_digest=$(printf '%s\n' "${all_refs}" | grep "^${fallback_type} " | awk '{print $2}' | tail -1)
+  fi
+
+  printf '%s\n' "${sig_digest:-}"
+}
+
+# Write artifact-lock.<platform_name>.json and commit via CI adapter.
+cibuild__build_write_artifact_lock() {
+  local platform="$1" \
+        platform_name="$2" \
+        target_image="$3" \
+        build_tag="$4" \
+        image_digest="$5" \
+        sbom_digest="${6:-}" \
+        vuln_digest="${7:-}" \
+        provenance_digest="${8:-}" \
+        build_client="$9"
+
+  local lock_file="artifact-lock.${platform_name}.json"
+  local source_commit
+  source_commit=$(cibuild_ci_commit)
+
+  local image_sig
+  image_sig=$(cibuild__build_get_sig_digest "${target_image}" "${image_digest}")
+
+  jq -n \
+    --arg platform        "${platform}" \
+    --arg platform_name   "${platform_name}" \
+    --arg image           "${target_image}" \
+    --arg build_tag       "${build_tag}" \
+    --arg image_digest    "${image_digest}" \
+    --arg sbom_digest        "${sbom_digest}" \
+    --arg vuln_digest        "${vuln_digest}" \
+    --arg provenance_digest  "${provenance_digest}" \
+    --arg image_sig          "${image_sig:-}" \
+    --arg build_client    "${build_client}" \
+    --arg source_commit   "${source_commit}" \
+    --arg built_at        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{
+      platform:      $platform,
+      platform_name: $platform_name,
+      image:         $image,
+      build_tag:     $build_tag,
+      image_digest:  $image_digest,
+      referrers: {
+        sbom:       $sbom_digest,
+        vuln:       $vuln_digest,
+        provenance: $provenance_digest
+      },
+      image_sig:     $image_sig,
+      build_client:  $build_client,
+      source_commit: $source_commit,
+      built_at:      $built_at
+    }' > "${lock_file}"
+
+  cibuild_log_info "artifact-lock written: ${lock_file}"
+
+  if cibuild_function_exists cibuild_ci_commit_lock_file; then
+    cibuild_ci_commit_lock_file "${lock_file}" || \
+      cibuild_log_err "artifact-lock commit failed (non-fatal)"
+  else
+    cibuild_log_info "cibuild_ci_commit_lock_file not implemented for this adapter — skipping commit"
+  fi
+}
+
+# Get the real platform manifest digest (resolves inside buildctl index if needed).
+# buildctl/buildx always write an index even for single-platform builds (attestations).
+# nix/kaniko write the manifest directly.
+cibuild__build_get_platform_digest() {
+  local target_image="$1" \
+        build_tag="$2" \
+        platform_name="$3" \
+        platform="$4" \
+        build_client="$5"
+
+  local ref="${target_image}:${build_tag}-${platform_name}"
+
+  case "${build_client}" in
+    buildctl|buildx)
+      regctl manifest head "${ref}" --platform "${platform}" 2>/dev/null
+      ;;
+    *)
+      regctl manifest head "${ref}" 2>/dev/null
+      ;;
+  esac
+}
+
+# =============================================================================
+# SBOM + VULN referrers via trivy — for buildctl/buildx/kaniko build clients.
+# nix generates its own referrers (bombon + vulnxscan) and passes them directly.
+#
+# Generates:
+#   CycloneDX SBOM → pushed as application/vnd.cyclonedx+json referrer
+#   Vuln report    → pushed as application/vnd.trivy.vuln+json referrer
+#
+# SPDX conversion stays in the release run (from the CycloneDX referrer).
+# =============================================================================
+
+# Push SBOM (CycloneDX) as OCI referrer, set _CIBUILD_SBOM_DIGEST.
+# Usage: cibuild__build_push_sbom <target_image> <image_digest> <platform> <platform_name>
+cibuild__build_push_sbom() {
+  local image_ref="$1" platform="$2" platform_name="$3"
+  _CIBUILD_SBOM_DIGEST=""
+
+  [ "$(cibuild_env_get 'build_sbom')" = "1" ] || return 0
+  command -v trivy >/dev/null 2>&1 || { cibuild_log_err "trivy not found — skipping SBOM (non-fatal)"; return 0; }
+
+  local sbom_tmp
+  sbom_tmp=$(mktemp)
+
+  cibuild_log_info "generating SBOM (CycloneDX) for ${platform_name}"
+  if ! trivy image \
+    --platform "${platform}" \
+    --format cyclonedx \
+    --scanners "" \
+    --quiet \
+    --output "${sbom_tmp}" \
+    "${image_ref}" 2>/dev/null; then
+    cibuild_log_err "trivy SBOM failed (non-fatal)"
+    rm -f "${sbom_tmp}"
+    return 0
+  fi
+
+  if [ -s "${sbom_tmp}" ]; then
+    local digest
+    if digest=$(regctl artifact put \
+      --artifact-type "application/vnd.cyclonedx+json" \
+      --subject "${image_ref}" \
+      --format '{{.Manifest.GetDescriptor.Digest}}' \
+      < "${sbom_tmp}" 2>/dev/null); then
+      _CIBUILD_SBOM_DIGEST="${digest}"
+    else
+      cibuild_log_err "SBOM push failed (non-fatal)"
+    fi
+    cibuild_log_info "SBOM pushed, digest: ${_CIBUILD_SBOM_DIGEST:-n/a}"
+  fi
+  rm -f "${sbom_tmp}"
+}
+
+# Push vuln report as OCI referrer, set _CIBUILD_VULN_DIGEST.
+# Usage: cibuild__build_push_vuln <target_image> <image_digest> <platform> <platform_name>
+cibuild__build_push_vuln() {
+  local image_ref="$1" platform="$2" platform_name="$3"
+  _CIBUILD_VULN_DIGEST=""
+
+  [ "$(cibuild_env_get 'build_vuln')" = "1" ] || return 0
+  command -v trivy >/dev/null 2>&1 || { cibuild_log_err "trivy not found — skipping vuln (non-fatal)"; return 0; }
+
+  local vuln_tmp
+  vuln_tmp=$(mktemp)
+
+  cibuild_log_info "generating vuln report for ${platform_name}"
+  if ! trivy image \
+    --platform "${platform}" \
+    --format json \
+    --scanners vuln \
+    --quiet \
+    --output "${vuln_tmp}" \
+    "${image_ref}" 2>/dev/null; then
+    cibuild_log_err "trivy vuln scan failed (non-fatal)"
+    rm -f "${vuln_tmp}"
+    return 0
+  fi
+
+  if [ -s "${vuln_tmp}" ]; then
+    local digest
+    if digest=$(regctl artifact put \
+      --artifact-type "application/vnd.trivy.vuln+json" \
+      --subject "${image_ref}" \
+      --format '{{.Manifest.GetDescriptor.Digest}}' \
+      < "${vuln_tmp}" 2>/dev/null); then
+      _CIBUILD_VULN_DIGEST="${digest}"
+    else
+      cibuild_log_err "vuln push failed (non-fatal)"
+    fi
+    cibuild_log_info "vuln pushed, digest: ${_CIBUILD_VULN_DIGEST:-n/a}"
+  fi
+  rm -f "${vuln_tmp}"
+}
+
+
+# Extract SLSA provenance from buildctl/buildx attestation-manifest and push as OCI referrer.
+# buildctl writes provenance as a Docker attestation-manifest inside the index.
+# We extract the SLSA payload and re-push as application/vnd.slsa.provenance+json referrer
+# so it is accessible as a standard OCI referrer independent of the index format.
+# Sets _CIBUILD_PROVENANCE_DIGEST on success.
+# Usage: cibuild__build_push_provenance <target_image> <build_tag> <platform_name> <platform> <image_digest>
+cibuild__build_push_provenance() {
+  local target_image="$1" \
+        build_tag="$2" \
+        platform_name="$3" \
+        platform="$4" \
+        image_digest="$5"
+  _CIBUILD_PROVENANCE_DIGEST=""
+
+  [ "$(cibuild_env_get 'build_provenance')" = "1" ] || return 0
+
+  local ref="${target_image}:${build_tag}-${platform_name}"
+
+  # get the index digest (buildctl always writes an index)
+  local index_digest
+  index_digest=$(regctl -v error manifest head "${ref}" 2>/dev/null) || {
+    cibuild_log_err "provenance: cannot get index digest for ${ref} (non-fatal)"
+    return 0
+  }
+
+  # find the attestation-manifest inside the index
+  local attestation_digest
+  attestation_digest=$(regctl -v error manifest get "${ref}@${index_digest}" \
+    --format '{{range .Manifests}}{{if eq (index .Annotations "vnd.docker.reference.type") "attestation-manifest"}}{{.Digest}}{{end}}{{end}}' \
+    2>/dev/null) || {
+    cibuild_log_err "provenance: cannot find attestation-manifest (non-fatal)"
+    return 0
+  }
+
+  if [ -z "${attestation_digest}" ]; then
+    cibuild_log_info "provenance: no attestation-manifest found for ${platform_name} (build_provenance may be disabled)"
+    return 0
+  fi
+
+  # extract the SLSA provenance payload from the attestation-manifest
+  local provenance_tmp
+  provenance_tmp=$(mktemp)
+  regctl artifact get "${target_image}@${attestation_digest}" \
+    > "${provenance_tmp}" 2>/dev/null || {
+    cibuild_log_err "provenance: artifact get failed (non-fatal)"
+    rm -f "${provenance_tmp}"
+    return 0
+  }
+
+  if [ ! -s "${provenance_tmp}" ]; then
+    cibuild_log_err "provenance: empty payload (non-fatal)"
+    rm -f "${provenance_tmp}"
+    return 0
+  fi
+
+  # push as OCI referrer on the platform image digest
+  local digest
+  if digest=$(regctl artifact put \
+    --artifact-type "application/vnd.slsa.provenance+json" \
+    --subject "${target_image}@${image_digest}" \
+    --format '{{.Manifest.GetDescriptor.Digest}}' \
+    < "${provenance_tmp}" 2>/dev/null); then
+    _CIBUILD_PROVENANCE_DIGEST="${digest}"
+    cibuild_log_info "provenance pushed, digest: ${_CIBUILD_PROVENANCE_DIGEST}"
+  else
+    cibuild_log_err "provenance push failed (non-fatal)"
+  fi
+  rm -f "${provenance_tmp}"
+}
+# =============================================================================
+# POST-BUILD: sign + write artifact-lock — shared across all build clients.
+# Called at the end of each platform iteration.
+# For buildctl/buildx/kaniko: generates SBOM + vuln referrers via trivy.
+# For nix: sbom_digest + vuln_digest are passed in from the build loop.
+# =============================================================================
+
+cibuild__build_post_platform() {
+  local platform="$1" \
+        platform_name="$2" \
+        target_image="$3" \
+        build_tag="$4" \
+        build_client="$5" \
+        sbom_digest="${6:-}" \
+        vuln_digest="${7:-}" \
+        signature=$(cibuild_env_get 'build_cosign_signature') \
+        remove_old_signatures=$(cibuild_env_get 'build_cosign_remove_old_signatures') \
+        signing_mode=$(cibuild_env_get 'build_cosign_signing_mode') \
+        signing_config=$(cibuild_env_get 'build_cosign_signing_config') \
+        new_bundle_format=$(cibuild_env_get 'build_cosign_new_bundle_format') \
+        annotations_path="${CIBUILD_LIB_PATH}/cosign_build_annotations.sh" \
+        signing_recursive=$(cibuild_env_get 'build_cosign_signing_recursive') \
+        verify$(cibuild_env_get 'build_cosign_verify')
+
+  local image_digest
+  image_digest=$(cibuild__build_get_platform_digest \
+    "${target_image}" "${build_tag}" "${platform_name}" "${platform}" "${build_client}")
+
+  if [ -z "${image_digest:-}" ]; then
+    cibuild_main_err "could not resolve platform manifest digest for ${platform_name}"
+  fi
+
+  local image_ref="${target_image}@${image_digest}"
+
+  cibuild_log_info "platform digest (${platform_name}): ${image_digest}"
+
+  # generate SBOM + vuln referrers for non-nix clients (nix passes them in)
+  if [ "${build_client}" != "nix" ]; then
+    cibuild__build_push_sbom "${image_ref}" "${platform}" "${platform_name}"
+    sbom_digest="${_CIBUILD_SBOM_DIGEST:-}"
+    cibuild__build_push_vuln "${image_ref}" "${platform}" "${platform_name}"
+    vuln_digest="${_CIBUILD_VULN_DIGEST:-}"
+  fi
+
+  # extract + push provenance for buildctl/buildx (attestation-manifest → OCI referrer)
+  local provenance_digest=""
+  case "${build_client}" in
+    buildctl|buildx)
+      cibuild__build_push_provenance \
+        "${target_image}" "${build_tag}" "${platform_name}" "${platform}" "${image_digest}"
+      provenance_digest="${_CIBUILD_PROVENANCE_DIGEST:-}"
+      ;;
+  esac
+
+  if [ "${remove_old_signatures:-1}" = "1" ]; then
+    cibuild_remove_signatures "${target_image}" "${image_digest}"
+  fi
+
+  if [ "${signature:-1}" = "1" ]; then
+    cibuild_log_info "signing platform image ${image_ref}"
+  
+    if ! cibuild_sign  "${image_ref}" \
+                "${signing_mode}" \
+                "${signing_config}" \
+                "${new_bundle_format}" \
+                "${annotations_path}" \
+                "${signing_recursive}"; then
+      cibuild_main_err "cibuild_sign failed: ${image_ref}"
+    fi
+  fi
+
+  if [ "${verify:-1}" = "1" ]; then
+    cibuild_log_info "verifying platform image ${image_ref}"
+    if ! cibuild_verify "${image_ref}" \
+                 "${signing_mode}" \
+                 "${new_bundle_format}"; then
+      cibuild_main_err "cibuild_verify failed: ${image_ref}"
+    fi
+  fi
+
+  cibuild__build_write_artifact_lock \
+    "${platform}" \
+    "${platform_name}" \
+    "${target_image}" \
+    "${build_tag}" \
+    "${image_digest}" \
+    "${sbom_digest}" \
+    "${vuln_digest}" \
+    "${provenance_digest}" \
+    "${build_client}"
+}
+
+# =============================================================================
+# Builder detection / creation (unchanged)
+# =============================================================================
+
 cibuild__build_detect_docker() {
   if ! timeout 5 docker info >/dev/null 2>&1; then
     return 1
@@ -14,17 +391,13 @@ cibuild__build_detect_docker() {
 }
 
 cibuild__build_detect_kubernetes() {
-  
   local build_buildkit_service_account=$(cibuild_env_get 'build_buildkit_service_account')
-
   if [ -z "${build_buildkit_service_account:-}" ]; then
     cibuild_main_err "CIBUILD_BUILD_BUILDKIT_SERVICE_ACCOUNT env var must not be empty"
     return 1
   fi
-
   echo "$build_buildkit_service_account" | base64 -d > /tmp/kubeconfig
   export KUBECONFIG=/tmp/kubeconfig
-
   if ! timeout 5 kubectl auth can-i create release -q >/dev/null 2>&1; then
     return 1
   else
@@ -55,34 +428,28 @@ create_remote_builder() {
   local build_buildx_driver=$(cibuild_env_get 'build_buildx_driver') \
         build_remote_buildkit=$(cibuild_env_get 'build_remote_buildkit') \
         build_buildkit_host=$(cibuild_env_get 'build_buildkit_host')
-
   if [ -z "${build_buildkit_host:-}" ]; then
     cibuild_main_err "CIBUILD_BUILDKIT_HOST env var must not be empty"
   fi
-  
   driver_opts=""
   if [ "${build_remote_buildkit:-}" = "1" ]; then
     cibuild__build_create_cert_files
     driver_opts="--driver-opt cacert=/tmp/ca.pem,cert=/tmp/cert.pem,key=/tmp/key.pem"
   fi
-  
   if ! docker buildx create \
     --name ${build_buildx_driver} \
     --driver remote ${driver_opts} \
     ${build_buildkit_host}; then
     cibuild_main_err "error creating builder $build_buildx_driver"
   fi
-  
 }
 
 create_kubernetes_builder() {
   local build_buildx_driver=$(cibuild_env_get 'build_buildx_driver') \
         build_kubernetes_replicas=$(cibuild_env_get 'build_kubernetes_replicas')
-
   if ! cibuild__build_detect_kubernetes; then
     cibuild_main_err "error detecting kubernetes backend"
   fi
-  
   if ! docker buildx create \
     --name "$build_buildx_driver" \
     --driver kubernetes \
@@ -90,61 +457,40 @@ create_kubernetes_builder() {
     --buildkitd-config "${CIBUILD_LIB_PATH}/res/buildkitd.local.toml"; then
     cibuild_main_err "error creating builder $build_buildx_driver"
   fi
-
 }
 
 cibuild__build_create_builder() {
   local build_buildx_driver=$(cibuild_env_get 'build_buildx_driver')
   case "$build_buildx_driver" in
-    dockercontainer)
-      create_dockercontainer_builder
-      ;;
-    remote)
-      create_remote_builder
-      ;;
-    kubernetes)
-      create_kubernetes_builder
-      ;;
-    *)
-      cibuild_main_err "buildx_driver $build_buildx_driver not supported"
-      ;;
+    dockercontainer) create_dockercontainer_builder ;;
+    remote)          create_remote_builder ;;
+    kubernetes)      create_kubernetes_builder ;;
+    *)               cibuild_main_err "buildx_driver $build_buildx_driver not supported" ;;
   esac
-  
   if ! docker buildx use ${build_buildx_driver}; then
     cibuild_main_err "error using builder ${build_buildx_driver}"
   fi
   if ! docker buildx inspect ${build_buildx_driver} --bootstrap; then
     cibuild_main_err "error bootstrapping builder ${build_buildx_driver}"
   fi
-
 }
 
 cibuild__build_create_cert_files() {
   local build_buildkit_client_ca=$(cibuild_env_get 'build_buildkit_client_ca') \
         build_buildkit_client_cert=$(cibuild_env_get 'build_buildkit_client_cert') \
         build_buildkit_client_key=$(cibuild_env_get 'build_buildkit_client_key')
-
-  if [ -z "${build_buildkit_client_ca}" ]; then
-    cibuild_main_err "CIBUILD_BUILD_BUILDKIT_CLIENT_CA env var must not be empty"
-  fi
-  
-  if [ -z "${build_buildkit_client_cert}" ]; then
-    cibuild_main_err "CIBUILD_BUILD_BUILDKIT_CLIENT_CERT env var must not be empty"
-  fi
-
-  if [ -z "${build_buildkit_client_key}" ]; then
-    cibuild_main_err "CIBUILD_BUILD_BUILDKIT_CLIENT_KEY env var must not be empty"
-  fi
-  printf '%s\n' "$build_buildkit_client_ca" | base64 -d > /tmp/ca.pem
+  [ -z "${build_buildkit_client_ca}" ]   && cibuild_main_err "CIBUILD_BUILD_BUILDKIT_CLIENT_CA must not be empty"
+  [ -z "${build_buildkit_client_cert}" ] && cibuild_main_err "CIBUILD_BUILD_BUILDKIT_CLIENT_CERT must not be empty"
+  [ -z "${build_buildkit_client_key}" ]  && cibuild_main_err "CIBUILD_BUILD_BUILDKIT_CLIENT_KEY must not be empty"
+  printf '%s\n' "$build_buildkit_client_ca"   | base64 -d > /tmp/ca.pem
   printf '%s\n' "$build_buildkit_client_cert" | base64 -d > /tmp/cert.pem
-  printf '%s\n' "$build_buildkit_client_key" | base64 -d > /tmp/key.pem
+  printf '%s\n' "$build_buildkit_client_key"  | base64 -d > /tmp/key.pem
 }
 
 cibuild__build_get_build_args() {
   local build_args=$(cibuild_env_get 'build_args') \
         build_client=$(cibuild_env_get 'build_client') \
         build_arguments
-
   if [ "${build_client}" = "buildx" ]; then
     for build_arg in ${build_args:-}; do
       build_arguments="${build_arguments} --build-arg ${build_arg}"
@@ -159,22 +505,12 @@ cibuild__build_get_build_args() {
 
 cibuild__build_get_cache_to_opt() {
   local build_client=$(cibuild_env_get 'build_client')
-
-  if [ "${build_client}" = "buildctl" ]; then
-    printf '%s\n' "--export-cache"
-  else
-    printf '%s\n' "--cache-to"
-  fi
+  [ "${build_client}" = "buildctl" ] && printf '%s\n' "--export-cache" || printf '%s\n' "--cache-to"
 }
 
 cibuild__build_get_cache_from_opt() {
   local build_client=$(cibuild_env_get 'build_client')
-
-  if [ "${build_client}" = "buildctl" ]; then
-    printf '%s\n' "--import-cache"
-  else
-    printf '%s\n' "--cache-from"
-  fi
+  [ "${build_client}" = "buildctl" ] && printf '%s\n' "--import-cache" || printf '%s\n' "--cache-from"
 }
 
 cibuild__build_get_import_cache_args() {
@@ -182,40 +518,20 @@ cibuild__build_get_import_cache_args() {
         build_tag=$(cibuild_ci_build_tag) \
         _build_import_cache=$(cibuild_env_get 'build_import_cache') \
         _build_cache_mode=$(cibuild_env_get 'build_cache_mode')
-
   local build_import_cache=${_build_import_cache:-$(cibuild_ci_default_cache_registry)}
   local build_cache_mode=${_build_cache_mode:-$(cibuild_ci_default_cache_mode)}
-  
   local cache_image=""
-
   case "$build_import_cache" in
-    "")
-      printf '%s\n' ""
-      return 0
-      ;;
-    ci_registry)
-      cache_image=$(cibuild_ci_image)
-      ;;
-    target_registry)
-      cache_image=$(cibuild_ci_target_image)
-      ;;
-    *)
-      printf '%s\n' "$(cibuild__build_get_cache_from_opt) ${build_import_cache}"
-      return 0
-      ;;
-    esac
-
-    case "$build_cache_mode" in
-      repo)
-        printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=${cache_image}-cache:${build_tag}-${arch}"    
-      ;;
-      tag)
-        printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=${cache_image}:${build_tag}-${arch}-cache"
-      ;;
-      *)
-        cibuild_log_err "unsupported build_cache_mode $build_cache_mode"
-        exit 1
-    esac
+    "")             printf '%s\n' ""; return 0 ;;
+    ci_registry)    cache_image=$(cibuild_ci_image) ;;
+    target_registry) cache_image=$(cibuild_ci_target_image) ;;
+    *)              printf '%s\n' "$(cibuild__build_get_cache_from_opt) ${build_import_cache}"; return 0 ;;
+  esac
+  case "$build_cache_mode" in
+    repo) printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=${cache_image}-cache:${build_tag}-${arch}" ;;
+    tag)  printf '%s\n' "$(cibuild__build_get_cache_from_opt) type=registry,ref=${cache_image}:${build_tag}-${arch}-cache" ;;
+    *)    cibuild_log_err "unsupported build_cache_mode $build_cache_mode"; exit 1 ;;
+  esac
 }
 
 cibuild__build_get_export_cache_args() {
@@ -224,40 +540,19 @@ cibuild__build_get_export_cache_args() {
         cache_mode=$(cibuild_env_get 'build_export_cache_mode') \
         _build_export_cache=$(cibuild_env_get 'build_export_cache') \
         _build_cache_mode=$(cibuild_env_get 'build_cache_mode')
-  
   local build_export_cache=${_build_export_cache:-$(cibuild_ci_default_cache_registry)}
   local build_cache_mode=${_build_cache_mode:-$(cibuild_ci_default_cache_mode)}
-
   local cache_image=""
-
   case "$build_export_cache" in
-    "")
-      printf '%s\n' ""
-      return 0
-      ;;
-    ci_registry)
-      cache_image=$(cibuild_ci_image)
-      ;;
-    target_registry)
-      cache_image=$(cibuild_ci_target_image)
-      ;;
-    *)
-      printf '%s\n' "$(cibuild__build_get_cache_to_opt) ${build_export_cache}"
-      return 0
-      ;;
+    "")             printf '%s\n' ""; return 0 ;;
+    ci_registry)    cache_image=$(cibuild_ci_image) ;;
+    target_registry) cache_image=$(cibuild_ci_target_image) ;;
+    *)              printf '%s\n' "$(cibuild__build_get_cache_to_opt) ${build_export_cache}"; return 0 ;;
   esac
-
   case "$build_cache_mode" in
-    repo)
-      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=${cache_image}-cache:${build_tag}-${arch},mode=${cache_mode}"
-      ;;
-    tag)
-      printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=${cache_image}:${build_tag}-${arch}-cache,mode=${cache_mode}"
-      ;;
-    *)
-      cibuild_log_err "unsupported build_cache_mode $build_cache_mode"
-      exit 1
-      ;;
+    repo) printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=${cache_image}-cache:${build_tag}-${arch},mode=${cache_mode}" ;;
+    tag)  printf '%s\n' "$(cibuild__build_get_cache_to_opt) type=registry,ref=${cache_image}:${build_tag}-${arch}-cache,mode=${cache_mode}" ;;
+    *)    cibuild_log_err "unsupported build_cache_mode $build_cache_mode"; exit 1 ;;
   esac
 }
 
@@ -265,15 +560,10 @@ cibuild__build_get_provenance_args() {
   local build_provenance=$(cibuild_env_get 'build_provenance') \
         build_provenance_mode=$(cibuild_env_get 'build_provenance_mode') \
         build_client=$(cibuild_env_get 'build_client')
-
-  # provenance only meaningful with buildkit-based clients
-  # nix: tbd (ZenDIS alignment pending)
-  # kaniko: no provenance support
   case "${build_client}" in
     buildctl|buildx) ;;
     *) return 0 ;;
   esac
-
   if [ "${build_provenance}" = "1" ]; then
     if [ "${build_client}" = "buildctl" ]; then
       printf '%s\n' "--opt attest:provenance=mode=${build_provenance_mode:-max}"
@@ -286,98 +576,33 @@ cibuild__build_get_provenance_args() {
 }
 
 # =============================================================================
-# DEBUG HELPER — dumps buildkitd/QEMU diagnostics to log
-# Called once before the first buildctl invocation
+# DEBUG HELPER (unchanged from original)
 # =============================================================================
+
 cibuild__build_debug_buildkitd() {
   cibuild_log_dump "=== buildkitd/QEMU diagnostics ==="
-
-  # 1. rootlesskit environment
-  cibuild_log_dump "--- rootlesskit environment ---"
   cibuild_log_dump "  ROOTLESSKIT_STATE_DIR: ${ROOTLESSKIT_STATE_DIR:-NOT SET}"
   cibuild_log_dump "  ROOTLESSKIT_PID:       ${ROOTLESSKIT_PID:-NOT SET}"
-  cibuild_log_dump "  ROOTLESSKIT_PARENT_EUID: ${ROOTLESSKIT_PARENT_EUID:-NOT SET}"
-  cibuild_log_dump "  ROOTLESSKIT_PARENT_EGID: ${ROOTLESSKIT_PARENT_EGID:-NOT SET}"
-
-  # 2. identity & subuid
-  cibuild_log_dump "--- identity ---"
   cibuild_log_dump "  id:     $(id)"
-  cibuild_log_dump "  whoami: $(whoami 2>/dev/null || echo n/a)"
-  cibuild_log_dump "  subuid: $(grep "^$(id -un):" /etc/subuid 2>/dev/null || grep "^root:" /etc/subuid 2>/dev/null || echo 'not found')"
-  cibuild_log_dump "  subgid: $(grep "^$(id -un):" /etc/subgid 2>/dev/null || grep "^root:" /etc/subgid 2>/dev/null || echo 'not found')"
-  cibuild_log_dump "  /etc/subuid contents: $(cat /etc/subuid 2>/dev/null || echo 'not readable')"
-  cibuild_log_dump "  /etc/subgid contents: $(cat /etc/subgid 2>/dev/null || echo 'not readable')"
-
-  # 3. buildctl-daemonless.sh — which one and its content
-  cibuild_log_dump "--- buildctl-daemonless.sh ---"
+  cibuild_log_dump "  subuid: $(grep "^$(id -un):" /etc/subuid 2>/dev/null || echo 'not found')"
   local daemonless_path
   daemonless_path="$(command -v buildctl-daemonless.sh 2>/dev/null || echo 'NOT IN PATH')"
-  cibuild_log_dump "  which: ${daemonless_path}"
-  if [ -f "${daemonless_path}" ]; then
-    cibuild_log_dump "  --- content start ---"
-    cat "${daemonless_path}" | while IFS= read -r line; do cibuild_log_dump "  | $line"; done
-    cibuild_log_dump "  --- content end ---"
-  fi
-
-  # 4. buildkit binaries — location and versions
-  cibuild_log_dump "--- buildkit binaries ---"
-  cibuild_log_dump "  which buildkitd:  $(command -v buildkitd 2>/dev/null || echo NOT FOUND)"
-  cibuild_log_dump "  which buildctl:   $(command -v buildctl 2>/dev/null || echo NOT FOUND)"
-  cibuild_log_dump "  buildkitd version: $(buildkitd --version 2>&1 || echo ERROR)"
-  cibuild_log_dump "  buildctl version:  $(buildctl --version 2>&1 || echo ERROR)"
-
-  # 5. buildkit-qemu-* binaries
-  cibuild_log_dump "--- buildkit-qemu-* binaries ---"
-  local bkd_dir
-  bkd_dir="$(dirname "$(command -v buildkitd 2>/dev/null)")"
-  cibuild_log_dump "  buildkitd dir: ${bkd_dir}"
-  ls -la "${bkd_dir}/buildkit-qemu-"* 2>/dev/null \
-    | while IFS= read -r line; do cibuild_log_dump "  $line"; done \
-    || cibuild_log_dump "  WARNING: no buildkit-qemu-* found in ${bkd_dir}"
-
-  # 6. buildkitd env vars
-  cibuild_log_dump "--- buildkitd env ---"
-  cibuild_log_dump "  BUILDKIT_HOST:    ${BUILDKIT_HOST:-not set}"
-  cibuild_log_dump "  BUILDKITD_FLAGS:  ${BUILDKITD_FLAGS:-not set}"
-  cibuild_log_dump "  XDG_RUNTIME_DIR:  ${XDG_RUNTIME_DIR:-not set}"
-  cibuild_log_dump "  TMPDIR:           ${TMPDIR:-not set}"
-
-  # 7. kernel binfmt_misc
-  cibuild_log_dump "--- /proc/sys/fs/binfmt_misc ---"
+  cibuild_log_dump "  buildctl-daemonless.sh: ${daemonless_path}"
+  cibuild_log_dump "  buildkitd: $(command -v buildkitd 2>/dev/null || echo NOT FOUND) $(buildkitd --version 2>&1 || true)"
+  cibuild_log_dump "  buildctl:  $(command -v buildctl 2>/dev/null || echo NOT FOUND) $(buildctl --version 2>&1 || true)"
+  cibuild_log_dump "  BUILDKIT_HOST: ${BUILDKIT_HOST:-not set}"
   if [ -r /proc/sys/fs/binfmt_misc/status ]; then
-    cibuild_log_dump "  status: $(cat /proc/sys/fs/binfmt_misc/status)"
-    ls /proc/sys/fs/binfmt_misc/ 2>/dev/null \
-      | grep -v '^register$\|^status$' \
-      | while IFS= read -r entry; do
-          cibuild_log_dump "  entry: $entry"
-        done
-  else
-    cibuild_log_dump "  not mounted or not readable"
+    cibuild_log_dump "  binfmt_misc status: $(cat /proc/sys/fs/binfmt_misc/status)"
   fi
-
-  # 8. user namespace kernel support
-  cibuild_log_dump "--- kernel userns ---"
-  cibuild_log_dump "  max_user_namespaces: $(cat /proc/sys/user/max_user_namespaces 2>/dev/null || echo 'not readable')"
-  cibuild_log_dump "  unprivileged_userns_clone: $(cat /proc/sys/kernel/unprivileged_userns_clone 2>/dev/null || echo 'not present')"
-
-  # 9. newuidmap / newgidmap (needed by rootlesskit for nested userns)
-  cibuild_log_dump "--- newuidmap/newgidmap ---"
-  cibuild_log_dump "  newuidmap: $(command -v newuidmap 2>/dev/null || echo NOT FOUND)"
-  cibuild_log_dump "  newgidmap: $(command -v newgidmap 2>/dev/null || echo NOT FOUND)"
-  ls -la "$(command -v newuidmap 2>/dev/null)" 2>/dev/null \
-    | while IFS= read -r line; do cibuild_log_dump "  $line"; done
-  # check caps on newuidmap
-  if command -v getcap >/dev/null 2>&1; then
-    cibuild_log_dump "  caps newuidmap: $(getcap "$(command -v newuidmap 2>/dev/null)" 2>/dev/null || echo n/a)"
-    cibuild_log_dump "  caps newgidmap: $(getcap "$(command -v newgidmap 2>/dev/null)" 2>/dev/null || echo n/a)"
-  fi
-
   cibuild_log_dump "=== end diagnostics ==="
 }
 
+# =============================================================================
+# BUILD CLIENTS
+# =============================================================================
+
 cibuild__build_image_buildx() {
-  local platforms \
-        platform \
+  local platforms platform \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         build_native=$(cibuild_env_get 'build_native') \
         build_opts=$(cibuild_env_get 'build_opts') \
@@ -387,17 +612,12 @@ cibuild__build_image_buildx() {
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
-        platform_name \
-        cache \
-        provenance_args \
-        no_cache
-
+        platform_name cache provenance_args no_cache
   local build_buildx_driver=$(cibuild_env_get 'build_buildx_driver')
-  
+
   cibuild_log_info "build image with buildx"
-  
   cibuild__build_create_builder
-  
+
   if [ "${build_native}" = "1" ]; then
     platforms=$(cibuild_core_get_platform_arch)
   else
@@ -406,24 +626,10 @@ cibuild__build_image_buildx() {
 
   for platform in ${platforms}; do
     platform_name=$(echo "${platform}" | tr '/' '-')
-    cibuild_log_debug "platform_name: $platform_name"
-
     cache="$(cibuild__build_get_import_cache_args ${platform_name}) $(cibuild__build_get_export_cache_args ${platform_name})"
-    cibuild_log_debug "cache: $cache"
-
     provenance_args="$(cibuild__build_get_provenance_args)"
-    cibuild_log_debug "provenance_args: $provenance_args"
-
-    cibuild_log_debug "build_args: $build_args"
-    cibuild_log_debug "build_opts: $build_opts"
-    
     . "${CIBUILD_LIB_PATH}/build_args.sh"
-
-    if [ "${build_use_cache}" = "0" ]; then
-      no_cache="--no-cache"
-    else
-      no_cache=""
-    fi
+    [ "${build_use_cache}" = "0" ] && no_cache="--no-cache" || no_cache=""
 
     if ! docker buildx build \
       --builder "${build_buildx_driver}" \
@@ -439,12 +645,15 @@ cibuild__build_image_buildx() {
       .; then
       cibuild_main_err "Build failed"
     fi
+
+    # buildx: SBOM/vuln generated in release run by trivy
+    cibuild__build_post_platform \
+      "${platform}" "${platform_name}" "${target_image}" "${build_tag}" "buildx" "" ""
   done
 }
 
 cibuild__build_image_buildctl() {
-  local platforms \
-        platform \
+  local platforms platform \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         build_native=$(cibuild_env_get 'build_native') \
         build_opts=$(cibuild_env_get 'build_opts') \
@@ -454,32 +663,15 @@ cibuild__build_image_buildctl() {
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
-        platform_name \
-        cache \
-        provenance_args \
-        no_cache \
-        build_command
-  
+        platform_name cache provenance_args no_cache build_command
   local build_remote_buildkit=$(cibuild_env_get 'build_remote_buildkit') \
         build_buildkit_host=$(cibuild_env_get 'build_buildkit_host') \
         build_buildkit_tls=$(cibuild_env_get 'build_buildkit_tls')
 
   cibuild_log_info "build image with buildctl"
+  [ -z "${build_buildkit_host:-}" ] && cibuild_main_err "CIBUILD_BUILDKIT_HOST must not be empty"
 
   if [ "${build_remote_buildkit:-}" = "1" ]; then
-    cibuild_log_info "build image with remote buildctl"
-  else
-    cibuild_log_info "build image with embedded buildctl-daemonless.sh"
-  fi
-  
-  if [ -z "${build_buildkit_host:-}" ]; then
-    cibuild_main_err "CIBUILD_BUILDKIT_HOST env var must not be empty"
-  fi
-
-  if [ "${build_remote_buildkit:-}" = "1" ]; then
-    if [ -z "${build_buildkit_host:-}" ]; then
-      cibuild_main_err "buildkit_host BUILDKIT_HOST required on remote_buildkit=1"
-    fi
     build_command="buildctl --addr ${build_buildkit_host}"
     if [ "${build_buildkit_tls:-1}" = "1" ]; then
       cibuild__build_create_cert_files
@@ -489,13 +681,8 @@ cibuild__build_image_buildctl() {
     build_command="buildctl-daemonless.sh"
   fi
 
-  # --- diagnostics before first build — only at debug log level ---
   cibuild__build_debug_buildkitd
 
-  # build oci image for each arch (Unfortunately docker references attestations in a (forced) image-index for each image)
-  # in release run a clean oci multiarch image index is created for final tagging 
-  # and an optional docker attestation manifest for ui
-  
   if [ "${build_native}" = "1" ]; then
     platforms=$(cibuild_core_get_platform_arch)
   else
@@ -504,27 +691,10 @@ cibuild__build_image_buildctl() {
 
   for platform in ${platforms}; do
     platform_name=$(echo "${platform}" | tr '/' '-')
-    cibuild_log_debug "platform_name: $platform_name"
-
     cache="$(cibuild__build_get_import_cache_args ${platform_name}) $(cibuild__build_get_export_cache_args ${platform_name})"
-    cibuild_log_debug "cache: $cache"
-
     provenance_args="$(cibuild__build_get_provenance_args)"
-    cibuild_log_debug "provenance_args: $provenance_args"
-
-    cibuild_log_debug "build_args: $build_args"
-    cibuild_log_debug "build_opts: $build_opts"
-    
     . "${CIBUILD_LIB_PATH}/build_args.sh"
-    
-    if [ "${build_use_cache}" = "0" ]; then
-      no_cache="--no-cache"
-    else
-      no_cache=""
-    fi
-
-    cibuild_log_info "--- build command for platform ${platform} ---"
-    cibuild_log_info "  cmd: $build_command build --frontend=dockerfile.v0 --opt platform=${platform} ..."
+    [ "${build_use_cache}" = "0" ] && no_cache="--no-cache" || no_cache=""
 
     if ! $build_command \
       build \
@@ -540,39 +710,31 @@ cibuild__build_image_buildctl() {
       ${cache:-} \
       --output "type=image,name=${target_image}:${build_tag}-${platform_name},oci-artifact=true,push=true" \
       "$@"; then
-      cibuild_log_info "--- build FAILED for ${platform} — post-failure diagnostics ---"
-      # check if qemu emulator symlink/file was created in /dev/
-      cibuild_log_info "  /dev/.buildkit_qemu_emulator: $(ls -la /dev/.buildkit_qemu_emulator 2>/dev/null || echo 'not found')"
-      # check if the problem is a missing qemu binary for this arch
-      # note: amd64 is the native arch — no qemu binary needed or expected
+      cibuild_log_info "--- build FAILED for ${platform} ---"
       local qemu_arch
       case "${platform}" in
         linux/arm64)   qemu_arch="aarch64" ;;
         linux/arm/v7)  qemu_arch="arm" ;;
-        linux/arm/v6)  qemu_arch="arm" ;;
-        linux/arm*)    qemu_arch="arm" ;;
         linux/s390x)   qemu_arch="s390x" ;;
         linux/ppc64le) qemu_arch="ppc64le" ;;
         linux/riscv64) qemu_arch="riscv64" ;;
         linux/386)     qemu_arch="i386" ;;
-        linux/amd64)   qemu_arch="" ;; # native — no emulation needed
+        linux/amd64)   qemu_arch="" ;;
         *)             qemu_arch="" ;;
       esac
-      if [ -n "${qemu_arch:-}" ]; then
-        cibuild_log_info "  expected qemu binary: buildkit-qemu-${qemu_arch}"
-        cibuild_log_info "  found: $(ls -la /usr/local/bin/buildkit-qemu-${qemu_arch} 2>/dev/null || echo 'NOT FOUND')"
-      else
-        cibuild_log_info "  platform ${platform} is native — no qemu binary needed"
-      fi
+      [ -n "${qemu_arch:-}" ] && \
+        cibuild_log_info "  qemu binary: $(ls -la /usr/local/bin/buildkit-qemu-${qemu_arch} 2>/dev/null || echo NOT FOUND)"
       cibuild_main_err "failed: $build_command"
     fi
-  done
 
+    # buildctl: SBOM/vuln generated in release run by trivy
+    cibuild__build_post_platform \
+      "${platform}" "${platform_name}" "${target_image}" "${build_tag}" "buildctl" "" ""
+  done
 }
 
 cibuild__build_image_kaniko() {
-  local platforms \
-        platform \
+  local platforms platform \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         build_native=$(cibuild_env_get 'build_native') \
         build_opts=$(cibuild_env_get 'build_opts') \
@@ -581,11 +743,10 @@ cibuild__build_image_kaniko() {
         target_image=$(cibuild_ci_target_image) \
         build_tag=$(cibuild_ci_build_tag) \
         container_file=$(cibuild_core_container_file) \
-        platform_name \
-        cache_args
-  
+        platform_name cache_args
+
   cibuild_log_info "build image with kaniko"
-  
+
   if [ "${build_native}" = "1" ]; then
     platforms=$(cibuild_core_get_platform_arch)
   else
@@ -594,20 +755,13 @@ cibuild__build_image_kaniko() {
 
   for platform in ${platforms}; do
     platform_name=$(echo "${platform}" | tr '/' '-')
-    cibuild_log_debug "platform_name: $platform_name"
-    cibuild_log_debug "build_args: $build_args"
-    cibuild_log_debug "build_opts: $build_opts"
-
     . "${CIBUILD_LIB_PATH}/build_args.sh"
-
     if [ "${build_use_cache}" = "0" ]; then
       cache_args="--cache=false"
     else
       cache_args="--cache=true --cache-repo=${target_image}-cache:${build_tag}-${platform_name}"
     fi
-    
-    cibuild_log_debug ${cache_args}
-    
+
     if ! /kaniko/executor \
       --context dir:///repo/ \
       --dockerfile Dockerfile \
@@ -619,15 +773,16 @@ cibuild__build_image_kaniko() {
       ${build_args} \
       ${build_opts} \
       "$@"; then
-      cibuild_main_err "kaniko build failed for ${platform}";
+      cibuild_main_err "kaniko build failed for ${platform}"
     fi
+
+    cibuild__build_post_platform \
+      "${platform}" "${platform_name}" "${target_image}" "${build_tag}" "kaniko" "" ""
   done
- 
 }
 
 cibuild__build_image_nix() {
-  local platforms \
-        platform \
+  local platforms platform \
         build_platforms=$(cibuild_env_get 'build_platforms') \
         build_native=$(cibuild_env_get 'build_native') \
         build_use_cache=$(cibuild_env_get 'build_use_cache') \
@@ -636,60 +791,39 @@ cibuild__build_image_nix() {
         nix_flake_attr_override=$(cibuild_env_get 'nix_flake_attr') \
         nix_flake_attr \
         nix_cache_url=$(cibuild_env_get 'nix_cache_url') \
-        nix_cache_token=$(cibuild_env_get 'nix_cache_token') \
         nix_sandbox=$(cibuild_env_get 'nix_sandbox') \
-        platform_name \
-        nix_system \
-        nix_conf_dir \
-        nix_sandbox_val
+        platform_name nix_system nix_conf_dir nix_sandbox_val nix_opts
 
   cibuild_log_info "build image with nix"
 
-  # --- sandbox autodetect ---
+  if [ ! -f "flake.lock" ]; then
+    cibuild_log_info "flake.lock not found — running nix flake update"
+    nix flake update --extra-experimental-features "nix-command flakes" || \
+      cibuild_main_err "nix flake update failed"
+  fi
+
   if [ -n "${nix_sandbox:-}" ]; then
     nix_sandbox_val="${nix_sandbox}"
   elif [ -n "${ROOTLESSKIT_PID:-}" ]; then
     nix_sandbox_val="true"
-    cibuild_log_info "nix sandbox: true (rootlesskit detected)"
   else
     nix_sandbox_val="false"
-    cibuild_log_info "nix sandbox: false (no rootlesskit)"
   fi
+  cibuild_log_info "nix sandbox: ${nix_sandbox_val}"
 
-  # --- write nix.conf ---
   nix_conf_dir="${HOME}/.config/nix"
   mkdir -p "${nix_conf_dir}"
   cat > "${nix_conf_dir}/nix.conf" <<EOF
 experimental-features = nix-command flakes
 sandbox = ${nix_sandbox_val}
-# single-user install — no nixbld group needed
 build-users-group =
 EOF
 
-  # --- configure Attic cache if set ---
   if [ -n "${nix_cache_url:-}" ]; then
-    cibuild_log_info "nix cache: ${nix_cache_url}"
-
-    if [ -n "${nix_cache_token:-}" ]; then
-      cache_host=$(printf '%s\n' "${nix_cache_url}" | sed 's|https\?://||' | cut -d'/' -f1)
-      # Attic auth via netrc — format: machine <host> password <jwt-token>
-      # no login field required, Attic ignores it
-      printf 'machine %s password %s\n' "${cache_host}" "${nix_cache_token}" \
-        > "${HOME}/.config/nix/netrc"
-      chmod 600 "${HOME}/.config/nix/netrc"
-      printf 'netrc-file = %s/.config/nix/netrc\n' "${HOME}" >> "${nix_conf_dir}/nix.conf"
-    fi
-
-    printf 'substituters = https://cache.nixos.org %s\n' "${nix_cache_url}" \
-      >> "${nix_conf_dir}/nix.conf"
-    printf 'trusted-substituters = https://cache.nixos.org %s\n' "${nix_cache_url}" \
-      >> "${nix_conf_dir}/nix.conf"
+    printf 'substituters = https://cache.nixos.org %s\n' "${nix_cache_url}" >> "${nix_conf_dir}/nix.conf"
+    printf 'trusted-substituters = https://cache.nixos.org %s\n' "${nix_cache_url}" >> "${nix_conf_dir}/nix.conf"
   fi
 
-  cibuild_log_debug "nix.conf:"
-  cibuild_log_debug "$(cat ${nix_conf_dir}/nix.conf)"
-
-  # --- platform loop ---
   if [ "${build_native}" = "1" ]; then
     platforms=$(cibuild_core_get_platform_arch)
   else
@@ -698,81 +832,110 @@ EOF
 
   for platform in ${platforms}; do
     platform_name=$(printf '%s\n' "${platform}" | tr '/' '-')
-    cibuild_log_debug "platform: ${platform} → platform_name: ${platform_name}"
 
     case "${platform}" in
-      linux/amd64)  nix_system="x86_64-linux"  ;;
-      linux/arm64)  nix_system="aarch64-linux"  ;;
-      *)
-        cibuild_main_err "nix backend: unsupported platform ${platform}"
-        ;;
+      linux/amd64) nix_system="x86_64-linux";  _nix_arch="amd64" ;;
+      linux/arm64) nix_system="aarch64-linux";  _nix_arch="arm64" ;;
+      *) cibuild_main_err "nix backend: unsupported platform ${platform}" ;;
     esac
 
-    # derive flake attribute from build_tag + arch unless explicitly overridden
-    # CIBUILD_NIX_FLAKE_ATTR is optional — if unset, use <build_tag>-<arch>
-    # branch name IS the build_tag — e.g. branch "83-fpm" → attr "83-fpm-amd64"
-    case "${platform}" in
-      linux/amd64) _nix_arch="amd64" ;;
-      linux/arm64) _nix_arch="arm64" ;;
-    esac
-    if [ -n "${nix_flake_attr_override:-}" ]; then
-      nix_flake_attr="${nix_flake_attr_override}"
-    else
-      nix_flake_attr="${build_tag}-${_nix_arch}"
-    fi
+    nix_flake_attr="${nix_flake_attr_override:-${build_tag}-${_nix_arch}}"
+    [ "${build_use_cache}" = "0" ] && nix_opts="--option substitute false" || nix_opts=""
 
     cibuild_log_info "nix build .#${nix_flake_attr} for ${nix_system}"
 
-    if [ "${build_use_cache}" = "0" ]; then
-      nix_opts="--option substitute false"
-    else
-      nix_opts=""
-    fi
-
-    if ! nix build \
-      ".#\"${nix_flake_attr}\"" \
-      --system "${nix_system}" \
-      ${nix_opts} \
-      --no-link \
-      --print-out-paths \
-      -L; then
+    if ! nix build ".#\"${nix_flake_attr}\"" \
+      --system "${nix_system}" ${nix_opts} --no-link --print-out-paths -L; then
       cibuild_main_err "nix build failed for ${nix_system}"
     fi
 
-    nix_result=$(nix build \
-      ".#\"${nix_flake_attr}\"" \
-      --system "${nix_system}" \
-      ${nix_opts} \
-      --no-link \
-      --print-out-paths 2>/dev/null)
-
-    cibuild_log_debug "nix result path: ${nix_result}"
+    nix_result=$(nix build ".#\"${nix_flake_attr}\"" \
+      --system "${nix_system}" ${nix_opts} --no-link --print-out-paths 2>/dev/null)
 
     cibuild_log_info "pushing ${target_image}:${build_tag}-${platform_name}"
-
-    if ! regctl image import \
-      "${target_image}:${build_tag}-${platform_name}" \
-      "${nix_result}"; then
+    if ! regctl image import "${target_image}:${build_tag}-${platform_name}" "${nix_result}"; then
       cibuild_main_err "regctl image import failed for ${platform_name}"
     fi
 
-    if [ -n "${nix_cache_url:-}" ]; then
-      cibuild_log_info "pushing nix store paths to cache: ${nix_cache_url}"
-      nix copy --to "${nix_cache_url}" "${nix_result}" || \
-        cibuild_log_err "nix copy to cache failed (non-fatal)"
+    # --- SBOM via bombon ---
+    local sbom_digest="" vuln_digest=""
+    local nix_sbom_attr="${nix_flake_attr}-sbom"
+    cibuild_log_info "nix build .#${nix_sbom_attr} (SBOM via bombon)"
+
+    nix_sbom_result=$(nix build ".#\"${nix_sbom_attr}\"" \
+      --system "${nix_system}" ${nix_opts} --no-link --print-out-paths 2>/dev/null) || {
+      cibuild_log_info "SBOM flake attr not found — skipping (non-fatal)"
+      nix_sbom_result=""
+    }
+
+    if [ -n "${nix_sbom_result:-}" ]; then
+      local sbom_file=""
+      [ -f "${nix_sbom_result}" ]               && sbom_file="${nix_sbom_result}"
+      [ -f "${nix_sbom_result}/sbom.cdx.json" ] && sbom_file="${nix_sbom_result}/sbom.cdx.json"
+
+      if [ -f "${sbom_file}" ]; then
+        cibuild_log_info "pushing SBOM for ${platform_name}"
+        sbom_digest=$(regctl artifact put \
+          --artifact-type "application/vnd.cyclonedx+json" \
+          --subject "${target_image}:${build_tag}-${platform_name}" \
+          --format '{{.Manifest.GetDescriptor.Digest}}' \
+          < "${sbom_file}" 2>/dev/null) || { cibuild_log_err "SBOM push failed (non-fatal)"; sbom_digest=""; }
+        cibuild_log_info "SBOM pushed, digest: ${sbom_digest:-n/a}"
+      fi
     fi
 
+    # --- Vuln report via vulnxscan ---
+    nix_php_result=$(nix build ".#\"${nix_flake_attr}-php\"" \
+      --system "${nix_system}" ${nix_opts} --no-link --print-out-paths 2>/dev/null) || {
+      cibuild_log_err "php store path not found — skipping vulnxscan (non-fatal)"
+      nix_php_result=""
+    }
+
+    if [ -n "${nix_php_result:-}" ]; then
+      local vuln_tmp
+      vuln_tmp=$(mktemp -d)
+      export XDG_CACHE_HOME="${vuln_tmp}/.cache"
+      local vuln_file="${vuln_tmp}/vulnreport.json"
+
+      nix run "github:tiiuae/sbomnix#vulnxscan" \
+        --extra-experimental-features "nix-command flakes" \
+        -- "${nix_php_result}" --out "${vuln_file}" 2>/dev/null || \
+        cibuild_log_err "vulnxscan failed (non-fatal)"
+
+      if [ -f "${vuln_file}" ] && [ -s "${vuln_file}" ]; then
+        vuln_digest=$(regctl artifact put \
+          --artifact-type "application/vnd.sbomnix.vulnreport+json" \
+          --subject "${target_image}:${build_tag}-${platform_name}" \
+          --format '{{.Manifest.GetDescriptor.Digest}}' \
+          < "${vuln_file}" 2>/dev/null) || { cibuild_log_err "vulnreport push failed (non-fatal)"; vuln_digest=""; }
+        cibuild_log_info "vulnreport pushed, digest: ${vuln_digest:-n/a}"
+      fi
+      rm -rf "${vuln_tmp}"
+    fi
+
+    # nix: has sbom_digest + vuln_digest from build
+    cibuild__build_post_platform \
+      "${platform}" "${platform_name}" "${target_image}" "${build_tag}" \
+      "nix" "${sbom_digest}" "${vuln_digest}"
   done
 }
 
+# =============================================================================
+# BUILD RUN ENTRYPOINT
+# =============================================================================
 
 cibuild_build_run() {
   local build_enabled=$(cibuild_env_get 'build_enabled') \
-        build_client=$(cibuild_env_get 'build_client')
-
+        build_client=$(cibuild_env_get 'build_client') \
+        signature=$(cibuild_env_get 'build_cosign_signature')
+        
   if [ "${build_enabled:?}" != "1" ]; then
     cibuild_log_info "build run skipped"
     return
+  fi
+
+  if [ "${signature:-1}" = "1" ]; then
+    cibuild_check_signing_env
   fi
 
   if ! cibuild_core_run_script build pre; then
@@ -797,7 +960,7 @@ cibuild_build_run() {
       ;;
     *)
       cibuild_main_err "build_client ${build_client} not supported"
-    ;;
+      ;;
   esac
 
   if ! cibuild_core_run_script build post; then

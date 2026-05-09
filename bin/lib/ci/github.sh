@@ -372,3 +372,43 @@ cibuild__ci_init() {
 }
 
 cibuild__ci_init
+
+# Commit artifact-lock.<platform>.json back to the branch.
+# Uses [skip ci] to prevent pipeline loop.
+# Requires GITHUB_TOKEN with contents:write permission.
+cibuild_ci_commit_lock_file() {
+  local lock_file="$1"
+
+  if [ ! -f "${lock_file}" ]; then
+    cibuild_log_err "cibuild_ci_commit_lock_file: ${lock_file} not found"
+    return 1
+  fi
+
+  if [ -z "${GITHUB_TOKEN:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ]; then
+    cibuild_log_err "cibuild_ci_commit_lock_file: GITHUB_TOKEN or GITHUB_REPOSITORY not set"
+    return 1
+  fi
+
+  local remote_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+  git config --global user.email "cibuild@ci.local"
+  git config --global user.name  "cibuild"
+  git config --global safe.directory '*'
+
+  git remote set-url origin "${remote_url}" 2>/dev/null || true
+
+  git add "${lock_file}"
+
+  if git diff --cached --quiet; then
+    cibuild_log_info "artifact-lock unchanged, no commit needed: ${lock_file}"
+    return 0
+  fi
+
+  git commit -m "chore(lock): update ${lock_file} [skip ci]"
+  git push origin "HEAD:${GITHUB_REF_NAME}" || {
+    cibuild_log_err "git push failed for ${lock_file}"
+    return 1
+  }
+
+  cibuild_log_info "artifact-lock committed and pushed: ${lock_file}"
+}
