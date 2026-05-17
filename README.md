@@ -15,7 +15,6 @@
 1. [Overview](#overview)
 2. [Artifact Lock Files](#artifact-lock-files)
 3. [Runs and Pipeline Jobs](#runs-and-pipeline-jobs)
-3. [Runs and Pipeline Jobs](#runs-and-pipeline-jobs)
 4. [Configuration](#configuration)
    - [Config Files](#config-files)
    - [Environment Variable Naming](#environment-variable-naming)
