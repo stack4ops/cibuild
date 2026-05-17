@@ -13,24 +13,27 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Runs and Pipeline Jobs](#runs-and-pipeline-jobs)
-3. [Configuration](#configuration)
+2. [Artifact Lock Files](#artifact-lock-files)
+3. [Runs and Pipeline Jobs](#runs-and-pipeline-jobs)
+3. [Runs and Pipeline Jobs](#runs-and-pipeline-jobs)
+4. [Configuration](#configuration)
    - [Config Files](#config-files)
    - [Environment Variable Naming](#environment-variable-naming)
-4. [Environment Variable Reference](#environment-variable-reference)
+5. [Environment Variable Reference](#environment-variable-reference)
    - [Global](#global)
    - [Check Run](#check-run)
    - [Build Run](#build-run)
    - [Test Run](#test-run)
    - [Release Run](#release-run)
    - [Update-Caches Run](#update-caches-run)
-5. [Dynamic Variables (Secrets, Build Args, Cosign Annotations)](#dynamic-variables)
-6. [CI Adapter Variables](#ci-adapter-variables)
-7. [Tag Templates](#tag-templates)
-8. [Registry Configuration](#registry-configuration)
-9. [Mirror Registries](#mirror-registries)
-10. [Test Assertions](#test-assertions)
-11. [Logging](#logging)
+   - [Cosign (shared)](#cosign-shared)
+6. [Dynamic Variables (Secrets, Build Args, Cosign Annotations)](#dynamic-variables)
+7. [CI Adapter Variables](#ci-adapter-variables)
+8. [Tag Templates](#tag-templates)
+9. [Registry Configuration](#registry-configuration)
+10. [Mirror Registries](#mirror-registries)
+11. [Test Assertions](#test-assertions)
+12. [Logging](#logging)
 
 ---
 
@@ -51,6 +54,52 @@ To explore all build modes locally or to develop cibuild itself, the `installer/
 
 ---
 
+## Artifact Lock Files
+
+After each platform build, cibuild writes an `artifact-lock.<platform_name>.json` file (e.g. `artifact-lock.linux-amd64.json`) to the repository root and commits it back to the branch via the CI adapter.
+
+The lock file records the exact digests of the platform image and all its supply chain referrers — SBOM, vulnerability report, and provenance — along with the cosign signature digest. This creates a **cryptographic anchor**: every artifact is tied to the immutable image digest, and because the image is signed, the entire chain is provably intact at any point in time.
+
+```json
+{
+  "platform":      "linux/amd64",
+  "platform_name": "linux-amd64",
+  "image":         "registry.example.com/myorg/myapp",
+  "build_tag":     "main",
+  "image_digest":  "sha256:abc123...",
+  "referrers": {
+    "sbom":        "sha256:def456...",
+    "vuln":        "sha256:ghi789...",
+    "provenance":  "sha256:jkl012..."
+  },
+  "image_sig":     "sha256:mno345...",
+  "build_client":  "buildctl",
+  "source_commit": "a1b2c3d4...",
+  "built_at":      "2024-11-15T10:30:00Z"
+}
+```
+
+### Usage across runs
+
+**Test run** — before executing any test, the test run reads the platform digest from the lock file and verifies the cosign signature against it. Tests always run against the exact digest that was built and signed — not against a tag that could have been overwritten. This can be disabled with `CIBUILD_TEST_COSIGN_VERIFY_BUILD_ARTEFACTS=0`.
+
+**Release run** — the release run reads platform digests from the lock files to assemble the multi-platform index, and re-verifies all cosign signatures before proceeding. This can be disabled with `CIBUILD_RELEASE_COSIGN_VERIFY_BUILD_ARTEFACTS=0`.
+
+Both runs resolve the image by digest — independently of tag state in the registry — so the entire pipeline is tamper-evident across jobs.
+
+### Compliance tooling
+
+The lock file is a plain JSON file committed to the repository, making all artifact digests available to external tools without registry access. Compliance pipelines and audit tools can consume it directly:
+
+- **SBOM consumers** (OWASP Dependency-Track, DevGuard) — use `referrers.sbom` to fetch the CycloneDX SBOM by digest from the registry
+- **CVE / VEX pipelines** — use `referrers.vuln` to fetch the trivy vulnerability report and feed it into VEX generation tools
+- **SARIF / audit dashboards** — combine `image_digest`, `source_commit`, and `built_at` to correlate image versions with source commits and scan results
+- **Sigstore / supply chain verification** — use `image_sig` to independently verify the cosign signature without running cibuild
+
+Lock files are committed to the repository with a `[skip ci]` commit message to avoid triggering a new pipeline. In the local adapter, they are committed locally without a push.
+
+---
+
 ## Runs and Pipeline Jobs
 
 cibuild has five runs that can be invoked individually or all at once:
@@ -58,9 +107,9 @@ cibuild has five runs that can be invoked individually or all at once:
 | Run | cibuilder Image | Description |
 |-----|-----------------|-------------|
 | `check` | `cibuilder:check` | Compares base image layers against the last built image. Cancels the pipeline if nothing changed. Only runs on scheduled or manually triggered pipelines. |
-| `build` | `cibuilder:build-buildctl` / `build-nix` / `build-kaniko` / `build-buildx` | Builds per-platform OCI images and pushes them to the target registry. |
+| `build` | `cibuilder:build-buildctl` / `build-nix` / `build-kaniko` / `build-buildx` | Builds per-platform OCI images, generates SBOM and CVE report as OCI referrers, signs with cosign, and pushes everything to the target registry. |
 | `test` | `cibuilder:test-docker` / `test-k8s` | Runs test script and/or JSON assertions against the freshly built image. |
-| `release` | `cibuilder:release` | Assembles a clean multi-platform index, generates SBOM (SPDX + CycloneDX), runs CVE scan, signs with cosign, copies additional tags, mirrors to other registries. |
+| `release` | `cibuilder:release` | Assembles a clean multi-platform index, generates SBOM (SPDX + CycloneDX) from the existing CycloneDX referrer, signs with cosign, copies additional tags, mirrors to other registries. |
 | `update-caches` | `cibuilder:update-caches` | Refreshes external caches (trivy vulnerability DB). Intended for scheduled pipelines — no build, no release. |
 
 Each run can be individually enabled or disabled and supports `pre_script` / `post_script` hooks.
@@ -122,6 +171,8 @@ CIBUILD_NIX_CACHE_TOKEN=...           # optional cache auth token
 ```
 
 The `build-nix` cibuilder variant ships a single-user Nix installation with flakes enabled. Sandbox mode is auto-detected at runtime. No `--privileged` flag required.
+
+For the nix client, SBOM and CVE reports are generated by the nix build itself (via `bombon` and `vulnxscan`) and passed directly as OCI referrers. The trivy-based SBOM/vuln generation in the build run is skipped for `build_client=nix`.
 
 ### Single job vs. split jobs
 
@@ -199,7 +250,7 @@ The check run compares the layer digests of the base image (extracted from the l
 
 ### Build Run
 
-The build run builds one OCI image per platform and pushes the result to the target registry. The build tag for each platform image follows the pattern `<build_tag>-<platform_name>` (e.g. `main-linux-amd64`).
+The build run builds one OCI image per platform, generates SBOM and CVE referrers, signs all artifacts with cosign, and pushes everything to the target registry. The build tag for each platform image follows the pattern `<build_tag>-<platform_name>` (e.g. `main-linux-amd64`).
 
 #### General Build Settings
 
@@ -231,6 +282,38 @@ The build run builds one OCI image per platform and pushes the result to the tar
 |----------|---------|-------------|
 | `CIBUILD_BUILD_PROVENANCE` | `1` | Generate SLSA provenance OCI attestation during build. Only meaningful with `build_client=buildctl` or `buildx`. Nix: tbd. Kaniko: not supported. |
 | `CIBUILD_BUILD_PROVENANCE_MODE` | `max` | Provenance detail level: `max` or `min`. |
+
+#### SBOM and Vulnerability Scanning
+
+SBOM and CVE scanning run in the build run immediately after each platform image is pushed. The SBOM (CycloneDX) and vulnerability report are pushed as OCI referrers to the target registry. For `build_client=nix`, these referrers are generated by the Nix toolchain (`bombon` + `vulnxscan`) and this step is skipped.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CIBUILD_BUILD_SBOM` | `1` | Set to `0` to disable SBOM generation in the build run. |
+| `CIBUILD_BUILD_SBOM_FORMATS` | `cyclonedx` | SBOM format(s) to generate. Currently `cyclonedx`. |
+| `CIBUILD_BUILD_VULN` | `1` | Set to `0` to disable CVE vulnerability scanning in the build run. |
+
+Build run artifacts pushed as OCI referrers per platform:
+
+```
+application/vnd.cyclonedx+json       # CycloneDX SBOM
+application/vnd.trivy.vuln+json      # CVE vulnerability report
+application/vnd.slsa.provenance+json # SLSA provenance (buildctl/buildx only)
+```
+
+#### Build Run Cosign Signing
+
+Platform images and their supply chain referrers (SBOM, vuln, provenance) are signed in the build run using cosign. See also the [shared Cosign settings](#cosign-shared) for key configuration.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CIBUILD_BUILD_COSIGN_SIGNATURE` | `1` | Set to `0` to disable cosign signing in the build run. |
+| `CIBUILD_BUILD_COSIGN_SIGNING_MODE` | `key` | Signing mode: `keyless` (Sigstore OIDC) or `key` (static key pair). |
+| `CIBUILD_BUILD_COSIGN_SIGNING_RECURSIVE` | `0` | Set to `1` to also sign referrer artifacts individually. |
+| `CIBUILD_BUILD_COSIGN_NEW_BUNDLE_FORMAT` | `1` | Use the OCI 1.1 referrers API for storing signatures. Set to `0` for the legacy `.sig` tag format. |
+| `CIBUILD_BUILD_COSIGN_SIGNING_CONFIG` | *(empty)* | Base64-encoded cosign signing config JSON. |
+| `CIBUILD_BUILD_COSIGN_REMOVE_OLD_SIGNATURES` | `1` | Remove previously stored signatures before signing. |
+| `CIBUILD_BUILD_COSIGN_VERIFY` | `1` | Set to `0` to skip cosign verification after signing. |
 
 #### Nix Build Settings
 
@@ -271,6 +354,7 @@ The build run builds one OCI image per platform and pushes the result to the tar
 | `CIBUILD_TEST_SERVICE_ACCOUNT` | *(empty)* | Base64-encoded kubeconfig for `TEST_BACKEND=kubernetes`. |
 | `CIBUILD_TEST_RUN_TIMEOUT` | `60` | Seconds to wait for the test container to reach running state. |
 | `CIBUILD_TEST_LOG_TIMEOUT` | `5` | Seconds to wait for expected log output in `assert_log` assertions. |
+| `CIBUILD_TEST_COSIGN_VERIFY_BUILD_ARTEFACTS` | `1` | Verify cosign signatures of build artifacts (image + referrers) before running tests. |
 
 ---
 
@@ -286,13 +370,13 @@ The build run builds one OCI image per platform and pushes the result to the tar
 
 #### SBOM and Vulnerability Scanning
 
-SBOM generation and CVE scanning always happen in the release run via `trivy`. Both SPDX and CycloneDX formats are generated by default.
+In the release run, SBOM generation converts the existing CycloneDX referrer (produced in the build run) into additional formats (e.g. SPDX). A separate CVE scan in the release run is disabled by default since scanning already happens in the build run.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CIBUILD_RELEASE_SBOM` | `1` | Set to `0` to disable SBOM generation. |
+| `CIBUILD_RELEASE_SBOM` | `1` | Set to `0` to disable SBOM generation in the release run. |
 | `CIBUILD_RELEASE_SBOM_FORMATS` | `spdx-json,cyclonedx` | Comma-separated list of SBOM formats. `spdx-json` → `.spdx.json`, `cyclonedx` → `.cdx.json`. |
-| `CIBUILD_RELEASE_VULN` | `1` | Set to `0` to disable the CVE vulnerability report. |
+| `CIBUILD_RELEASE_VULN` | `0` | Set to `1` to enable an additional CVE vulnerability scan in the release run. |
 | `CIBUILD_RELEASE_VULN_FORMAT` | `json` | Vulnerability report format (trivy `--format`). |
 
 Release artifacts written to `$CIBUILD_OUTPUT_DIR`:
@@ -302,7 +386,7 @@ sbom-linux-amd64.spdx.json       # SPDX — GitHub, OpenChain, compliance tools
 sbom-linux-amd64.cdx.json        # CycloneDX — OWASP Dependency-Track, DevGuard
 sbom-linux-arm64.spdx.json
 sbom-linux-arm64.cdx.json
-vuln-linux-amd64.json             # CVE report
+vuln-linux-amd64.json             # CVE report (if CIBUILD_RELEASE_VULN=1)
 vuln-linux-arm64.json
 provenance-linux-amd64.slsa.json  # SLSA provenance (buildctl/buildx only)
 provenance-linux-arm64.slsa.json
@@ -325,25 +409,18 @@ cert.json                         # cosign keyless certificate
 | `CIBUILD_RELEASE_DOCKER_ATTESTATION_AUTODETECT` | `1` | Automatically enable Docker attestation manifest when the target registry is `docker.io`. |
 | `CIBUILD_RELEASE_DOCKER_ATTESTATION_MANIFEST` | `0` | Force-enable the Docker attestation manifest. Required for Docker Hub UI to show "Signed" status. |
 
-#### Cosign Signing
+#### Release Run Cosign Signing
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CIBUILD_RELEASE_COSIGN_SIGNATURE` | `1` | Set to `0` to disable cosign signing entirely. |
-| `CIBUILD_RELEASE_COSIGN_SIGNING_MODE` | `keyless` | Signing mode: `keyless` (Sigstore OIDC) or `key` (static key pair). |
-| `CIBUILD_RELEASE_COSIGN_NEW_BUNDLE_FORMAT` | `1` | Use the OCI 1.1 referrers API for storing signatures. Set to `0` for the legacy `.sig` tag format. |
+| `CIBUILD_RELEASE_COSIGN_SIGNATURE` | `1` | Set to `0` to disable cosign signing in the release run. |
+| `CIBUILD_RELEASE_COSIGN_SIGNING_MODE` | `key` | Signing mode: `keyless` (Sigstore OIDC) or `key` (static key pair). |
+| `CIBUILD_RELEASE_COSIGN_NEW_BUNDLE_FORMAT` | `0` | Use the OCI 1.1 referrers API for storing signatures. Set to `1` for OCI 1.1; default is legacy `.sig` tag format. |
 | `CIBUILD_RELEASE_COSIGN_SIGNING_RECURSIVE` | `0` | Set to `1` to sign platform images individually in addition to the image index. |
-| `CIBUILD_RELEASE_COSIGN_VERIFY` | `1` | Set to `0` to skip cosign verification after signing. |
 | `CIBUILD_RELEASE_COSIGN_SIGNING_CONFIG` | *(empty)* | Base64-encoded cosign signing config JSON. |
-| `CIBUILD_RELEASE_COSIGN_PRIVATE_KEY` | *(required for key mode)* | Base64-encoded cosign private key. |
-| `CIBUILD_RELEASE_COSIGN_PUBLIC_KEY` | *(optional for key mode)* | Base64-encoded cosign public key. Falls back to `cosign.pub` in the repo root. |
-| `CIBUILD_RELEASE_REMOVE_OLD_SIGNATURES` | `1` | Remove previously stored signatures before signing. |
-
-#### Supply Chain Artifact Upload
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CIBUILD_RELEASE_UPLOAD_SUPPLY_CHAIN_ARTIFACTS` | *(empty)* | Set to `package` to upload SBOM, provenance, CVE report and digests to the CI platform's artifact store. Currently supported: `package` → GitLab Generic Package Registry. |
+| `CIBUILD_RELEASE_COSIGN_REMOVE_DUPLICATED_SIGNATURES` | `1` | Remove duplicate signatures before signing. |
+| `CIBUILD_RELEASE_COSIGN_VERIFY` | `1` | Set to `0` to skip cosign verification after signing. |
+| `CIBUILD_RELEASE_COSIGN_VERIFY_BUILD_ARTEFACTS` | `1` | Verify cosign signatures of build artifacts (image + referrers) before release. |
 
 #### Cleanup
 
@@ -374,6 +451,21 @@ update-caches:
   # mount trivy cache volume in runner config.toml:
   # volumes = ["cibuilder-trivy-cache:/home/cibuilder/.cache/trivy"]
 ```
+
+---
+
+## Cosign (shared)
+
+These variables apply to both the build run and the release run cosign operations.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CIBUILD_COSIGN_PRIVATE_KEY` | *(required for key mode)* | Base64-encoded cosign private key. |
+| `CIBUILD_COSIGN_PUBLIC_KEY` | *(optional for key mode)* | Base64-encoded cosign public key. Falls back to `cosign.pub` in the repo root. |
+| `CIBUILD_COSIGN_SIGNING_MAX_RETRIES` | `6` | Number of retry attempts for cosign sign operations. |
+| `CIBUILD_COSIGN_SIGNING_RETRY_INTERVAL` | `3` | Seconds to wait between sign retries. |
+| `CIBUILD_COSIGN_VERIFY_MAX_RETRIES` | `6` | Number of retry attempts for cosign verify operations. |
+| `CIBUILD_COSIGN_VERIFY_RETRY_INTERVAL` | `3` | Seconds to wait between verify retries. |
 
 ---
 
