@@ -324,12 +324,8 @@ cibuild__ci_init
 # Requires CIBUILD_CI_TOKEN with write_repository scope and git configured.
 cibuild_ci_commit_lock_file() {
   local lock_file="$1"
-  local skip_ci_on_commit_artifact_lock_file=$(cibuild_env_get 'skip_ci_on_commit_artifact_lock_file')
   local skip_ci=" [skip ci]"
-
-  if [ "${skip_ci_on_commit_artifact_lock_file}" = "0" ]; then
-    skip_ci=""
-  fi
+  [ "$(cibuild_env_get 'skip_ci_on_commit_artifact_lock_file')" = "1" ] || skip_ci=""
 
   cibuild_log_debug "skip_ci suffix: ${skip_ci}"
 
