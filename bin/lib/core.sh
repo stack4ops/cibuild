@@ -489,7 +489,7 @@ cibuild_sign() {
   . "${annotations_path}"
 
   local new_bundle_format_arg=""
-  if [ "${new_bundle_format}" = "0" ]; then
+  if [ "${new_bundle_format}" = "0" ] && [ "${signing_mode}" = "key" ]; then
     new_bundle_format_arg="--new-bundle-format=false"
   else
     new_bundle_format_arg="--new-bundle-format=true"
