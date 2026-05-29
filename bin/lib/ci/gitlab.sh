@@ -327,6 +327,8 @@ cibuild_ci_commit_lock_file() {
   local skip_ci=" [skip ci]"
   [ "$(cibuild_env_get 'skip_ci_on_commit_artifact_lock_file')" = "1" ] || skip_ci=""
 
+  cibuild_log_debug "skip_ci suffix: ${skip_ci}"
+
   if [ ! -f "${lock_file}" ]; then
     cibuild_log_err "cibuild_ci_commit_lock_file: ${lock_file} not found"
     return 1
