@@ -13,6 +13,7 @@ docker_host=tcp://docker:2375
 check_enabled=0
 check_pre_script=
 check_post_script=
+skip_ci_on_commit_artifact_lock_file=1
 build_enabled=1
 build_tag=
 build_pre_script=

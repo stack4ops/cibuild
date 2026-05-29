@@ -378,6 +378,8 @@ cibuild__ci_init
 # Requires GITHUB_TOKEN with contents:write permission.
 cibuild_ci_commit_lock_file() {
   local lock_file="$1"
+  local skip_ci=" [skip ci]"
+  [ "$(cibuild_env_get 'skip_ci_on_commit_artifact_lock_file')" = "1" ] || skip_ci=""
 
   if [ ! -f "${lock_file}" ]; then
     cibuild_log_err "cibuild_ci_commit_lock_file: ${lock_file} not found"
@@ -404,7 +406,7 @@ cibuild_ci_commit_lock_file() {
     return 0
   fi
 
-  git commit -m "chore(lock): update ${lock_file} [skip ci]"
+  git commit -m "chore(lock): update ${lock_file}${skip ci}"
   git push origin "HEAD:${GITHUB_REF_NAME}" || {
     cibuild_log_err "git push failed for ${lock_file}"
     return 1
