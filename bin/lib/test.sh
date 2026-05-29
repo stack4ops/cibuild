@@ -466,10 +466,10 @@ cibuild__test_image() {
         test_assert_file \
         test_script_file=$(cibuild_env_get 'test_script_file') \
         test_assert_file=$(cibuild_env_get 'test_assert_file') \
-        test_cosign_verify_build_artefacts=$(cibuild_env_get 'test_cosign_verify_build_artefacts')
+        test_cosign_verify_build_artifacts=$(cibuild_env_get 'test_cosign_verify_build_artifacts')
 
   # --- verify all platform images
-  if [ "${test_cosign_verify_build_artefacts:-1}" = "1" ]; then
+  if [ "${test_cosign_verify_build_artifacts:-1}" = "1" ]; then
     cibuild_verify_all_platforms
   fi
 

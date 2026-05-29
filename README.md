@@ -80,9 +80,9 @@ The lock file records the exact digests of the platform image and all its supply
 
 ### Usage across runs
 
-**Test run** — before executing any test, the test run reads the platform digest from the lock file and verifies the cosign signature against it. Tests always run against the exact digest that was built and signed — not against a tag that could have been overwritten. This can be disabled with `CIBUILD_TEST_COSIGN_VERIFY_BUILD_ARTEFACTS=0`.
+**Test run** — before executing any test, the test run reads the platform digest from the lock file and verifies the cosign signature against it. Tests always run against the exact digest that was built and signed — not against a tag that could have been overwritten. This can be disabled with `CIBUILD_TEST_COSIGN_VERIFY_BUILD_ARTIFACTS=0`.
 
-**Release run** — the release run reads platform digests from the lock files to assemble the multi-platform index, and re-verifies all cosign signatures before proceeding. This can be disabled with `CIBUILD_RELEASE_COSIGN_VERIFY_BUILD_ARTEFACTS=0`.
+**Release run** — the release run reads platform digests from the lock files to assemble the multi-platform index, and re-verifies all cosign signatures before proceeding. This can be disabled with `CIBUILD_RELEASE_COSIGN_VERIFY_BUILD_ARTIFACTS=0`.
 
 Both runs resolve the image by digest — independently of tag state in the registry — so the entire pipeline is tamper-evident across jobs.
 
@@ -353,7 +353,7 @@ Platform images and their supply chain referrers (SBOM, vuln, provenance) are si
 | `CIBUILD_TEST_SERVICE_ACCOUNT` | *(empty)* | Base64-encoded kubeconfig for `TEST_BACKEND=kubernetes`. |
 | `CIBUILD_TEST_RUN_TIMEOUT` | `60` | Seconds to wait for the test container to reach running state. |
 | `CIBUILD_TEST_LOG_TIMEOUT` | `5` | Seconds to wait for expected log output in `assert_log` assertions. |
-| `CIBUILD_TEST_COSIGN_VERIFY_BUILD_ARTEFACTS` | `1` | Verify cosign signatures of build artifacts (image + referrers) before running tests. |
+| `CIBUILD_TEST_COSIGN_VERIFY_BUILD_ARTIFACTS` | `1` | Verify cosign signatures of build artifacts (image + referrers) before running tests. |
 
 ---
 
@@ -419,7 +419,7 @@ cert.json                         # cosign keyless certificate
 | `CIBUILD_RELEASE_COSIGN_SIGNING_CONFIG` | *(empty)* | Base64-encoded cosign signing config JSON. |
 | `CIBUILD_RELEASE_COSIGN_REMOVE_DUPLICATED_SIGNATURES` | `1` | Remove duplicate signatures before signing. |
 | `CIBUILD_RELEASE_COSIGN_VERIFY` | `1` | Set to `0` to skip cosign verification after signing. |
-| `CIBUILD_RELEASE_COSIGN_VERIFY_BUILD_ARTEFACTS` | `1` | Verify cosign signatures of build artifacts (image + referrers) before release. |
+| `CIBUILD_RELEASE_COSIGN_VERIFY_BUILD_ARTIFACTS` | `1` | Verify cosign signatures of build artifacts (image + referrers) before release. |
 
 #### Cleanup
 
