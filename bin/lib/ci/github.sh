@@ -393,7 +393,7 @@ cibuild_ci_commit_lock_file() {
 
   local remote_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
-  git config --global user.email "cibuild@ci.local"
+  git config --global user.email "cibuild@ci.github"
   git config --global user.name  "cibuild"
   git config --global safe.directory '*'
 
