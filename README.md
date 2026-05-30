@@ -71,7 +71,6 @@ The lock file records the exact digests of the platform image and all its supply
     "vuln":        "sha256:ghi789...",
     "provenance":  "sha256:jkl012..."
   },
-  "image_sig":     "sha256:mno345...",
   "build_client":  "buildctl",
   "source_commit": "a1b2c3d4...",
   "built_at":      "2024-11-15T10:30:00Z"
@@ -93,7 +92,6 @@ The lock file is a plain JSON file committed to the repository, making all artif
 - **SBOM consumers** (OWASP Dependency-Track, DevGuard) — use `referrers.sbom` to fetch the CycloneDX SBOM by digest from the registry
 - **CVE / VEX pipelines** — use `referrers.vuln` to fetch the trivy vulnerability report and feed it into VEX generation tools
 - **SARIF / audit dashboards** — combine `image_digest`, `source_commit`, and `built_at` to correlate image versions with source commits and scan results
-- **Sigstore / supply chain verification** — use `image_sig` to independently verify the cosign signature without running cibuild
 
 Lock files are committed to the repository with a `[skip ci]` commit message to avoid triggering a new pipeline. In the local adapter, they are committed locally without a push.
 

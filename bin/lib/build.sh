@@ -58,9 +58,6 @@ cibuild__build_write_artifact_lock() {
   local source_commit
   source_commit=$(cibuild_ci_commit)
 
-  local image_sig
-  image_sig=$(cibuild__build_get_sig_digest "${target_image}" "${image_digest}")
-
   jq -n \
     --arg platform        "${platform}" \
     --arg platform_name   "${platform_name}" \
@@ -70,7 +67,6 @@ cibuild__build_write_artifact_lock() {
     --arg sbom_digest        "${sbom_digest}" \
     --arg vuln_digest        "${vuln_digest}" \
     --arg provenance_digest  "${provenance_digest}" \
-    --arg image_sig          "${image_sig:-}" \
     --arg build_client    "${build_client}" \
     --arg source_commit   "${source_commit}" \
     --arg built_at        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -85,7 +81,6 @@ cibuild__build_write_artifact_lock() {
         vuln:       $vuln_digest,
         provenance: $provenance_digest
       },
-      image_sig:     $image_sig,
       build_client:  $build_client,
       source_commit: $source_commit,
       built_at:      $built_at
