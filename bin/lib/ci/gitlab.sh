@@ -342,7 +342,7 @@ cibuild_ci_commit_lock_file() {
   local remote_url
   remote_url=$(echo "${CI_PROJECT_URL}" | sed "s|https://|https://gitlab-ci-token:${CIBUILD_CI_TOKEN}@|")
 
-  git config --global user.email "cibuild@ci.local"
+  git config --global user.email "cibuild@ci.gitlab"
   git config --global user.name  "cibuild"
   git config --global safe.directory '*'
 
