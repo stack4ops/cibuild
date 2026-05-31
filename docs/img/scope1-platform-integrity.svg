@@ -1,0 +1,124 @@
+<svg width="100%" viewBox="0 0 680 1080" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Scope 1: Platform Image Integrity — from build trigger through digest-bound signing to continuous verification</title>
+  <desc>A build trigger (Renovate MR, commit, or manual) starts the pipeline. Platform Image digests are resolved into an artifact-lock with SBOM and provenance attached as OCI referrers, then signed against cosign.pub. Every pipeline stage and external governance tool re-verifies the signature using the digest. Without the signature, attestations could be forged against the correct digest.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#a32d2d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      text { font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; }
+      .th { font-size: 13px; font-weight: 600; }
+      .ts { font-size: 11px; font-weight: 400; }
+      .tl { font-size: 10px; font-weight: 400; fill: #888; }
+      .tj { font-size: 11px; font-weight: 400; }
+      .tm { font-size: 10px; font-weight: 600; }
+    </style>
+  </defs>
+  <rect width="680" height="1080" fill="#fafaf8"/>
+
+  <!-- ═══ TRIGGER — causal entry point ═══ -->
+  <rect x="190" y="24" width="300" height="68" rx="10" fill="#eeedfe" stroke="#534ab7" stroke-width="1"/>
+  <text class="th" x="340" y="42" text-anchor="middle" dominant-baseline="central" fill="#26215c">Build Trigger</text>
+  <text class="ts" x="340" y="60" text-anchor="middle" dominant-baseline="central" fill="#534ab7">Renovate MR · commit · manual</text>
+  <text class="tl" x="340" y="78" text-anchor="middle" dominant-baseline="central">automated or human — pipeline runs from here</text>
+  <line x1="340" y1="92" x2="340" y2="116" stroke="#534ab7" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- ═══ Pipeline resolves digests ═══ -->
+  <rect x="120" y="116" width="440" height="40" rx="8" fill="#f1efe8" stroke="#b4b2a9" stroke-width="0.5"/>
+  <text class="ts" x="340" y="136" text-anchor="middle" dominant-baseline="central" fill="#5f5e5a" font-weight="600">Pipeline resolves Platform Image digests → artifact-lock</text>
+  <line x1="340" y1="156" x2="340" y2="180" stroke="#888780" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- ═══ artifact-lock callout with full JSON ═══ -->
+  <rect x="90" y="180" width="500" height="244" rx="8" fill="#f6f4ec" stroke="#888780" stroke-width="0.6"/>
+  <text class="th" x="110" y="200" dominant-baseline="central" fill="#2c2c2a">artifact-lock — digests only, no tags</text>
+  <text class="tj" x="110" y="226" dominant-baseline="central" fill="#3b6d11">{</text>
+  <text class="tj" x="130" y="244" dominant-baseline="central" fill="#5f5e5a">"platform-images": [</text>
+  <text class="tj" x="150" y="262" dominant-baseline="central" fill="#5f5e5a">{</text>
+  <text class="tj" x="170" y="280" dominant-baseline="central" fill="#5f5e5a">"platform": "linux/amd64",</text>
+  <text class="tj" x="170" y="296" dominant-baseline="central" fill="#5f5e5a">"digest": "sha256:a1b2c3…",</text>
+  <text class="tj" x="170" y="312" dominant-baseline="central" fill="#085041">"referrers": ["sbom:cyclonedx", "provenance:slsa"]</text>
+  <text class="tj" x="150" y="328" dominant-baseline="central" fill="#5f5e5a">},</text>
+  <text class="tj" x="150" y="346" dominant-baseline="central" fill="#5f5e5a">{</text>
+  <text class="tj" x="170" y="364" dominant-baseline="central" fill="#5f5e5a">"platform": "linux/arm64",</text>
+  <text class="tj" x="170" y="380" dominant-baseline="central" fill="#5f5e5a">"digest": "sha256:c3d4e5…",</text>
+  <text class="tj" x="170" y="396" dominant-baseline="central" fill="#085041">"referrers": ["sbom:cyclonedx", "provenance:slsa"]</text>
+  <text class="tj" x="150" y="412" dominant-baseline="central" fill="#5f5e5a">}</text>
+  <text class="tj" x="130" y="412" text-anchor="start" dominant-baseline="central" fill="#5f5e5a"> </text>
+  <line x1="340" y1="424" x2="340" y2="448" stroke="#888780" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- ═══ SCOPE 1 SIGNATURE — the security core ═══ -->
+  <rect x="140" y="448" width="400" height="88" rx="10" fill="#085041" stroke="#0f6e56" stroke-width="1.2"/>
+  <text class="th" x="340" y="470" text-anchor="middle" dominant-baseline="central" fill="#e1f5ee" style="font-size:14px">Scope 1 Signature — the security core</text>
+  <text class="ts" x="340" y="490" text-anchor="middle" dominant-baseline="central" fill="#9fe1cb">Platform Image digests signed against cosign.pub</text>
+  <text class="tl" x="340" y="508" text-anchor="middle" dominant-baseline="central" fill="#5dcaa5">binds digest ↔ signature · only digests consumed, never tags</text>
+  <text class="tl" x="340" y="522" text-anchor="middle" dominant-baseline="central" fill="#5dcaa5">signed meta carries image.revision → VCS revision (self-attested)</text>
+
+  <!-- ═══ Continuous verification ═══ -->
+  <text class="tm" x="116" y="572" text-anchor="middle" dominant-baseline="central" fill="#534ab7">Pipeline — every stage re-verifies</text>
+
+  <rect x="28" y="588" width="176" height="48" rx="8" fill="#eeedfe" stroke="#534ab7" stroke-width="0.5"/>
+  <text class="th" x="116" y="606" text-anchor="middle" dominant-baseline="central" fill="#26215c">Build stage</text>
+  <text class="ts" x="116" y="622" text-anchor="middle" dominant-baseline="central" fill="#534ab7">signs digests</text>
+  <line x1="116" y1="636" x2="116" y2="658" stroke="#534ab7" stroke-width="0.8" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="28" y="658" width="176" height="48" rx="8" fill="#eeedfe" stroke="#534ab7" stroke-width="0.8"/>
+  <text class="th" x="116" y="676" text-anchor="middle" dominant-baseline="central" fill="#26215c">Test stage</text>
+  <text class="ts" x="116" y="692" text-anchor="middle" dominant-baseline="central" fill="#534ab7">verifies sig + digest</text>
+  <line x1="116" y1="706" x2="116" y2="728" stroke="#534ab7" stroke-width="0.8" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="28" y="728" width="176" height="48" rx="8" fill="#eeedfe" stroke="#534ab7" stroke-width="0.8"/>
+  <text class="th" x="116" y="746" text-anchor="middle" dominant-baseline="central" fill="#26215c">Release stage</text>
+  <text class="ts" x="116" y="762" text-anchor="middle" dominant-baseline="central" fill="#534ab7">verifies sig + digest</text>
+  <text class="tl" x="116" y="792" text-anchor="middle" dominant-baseline="central">no stage inherits trust — each checks itself</text>
+
+  <!-- Governance -->
+  <text class="tm" x="558" y="572" text-anchor="middle" dominant-baseline="central" fill="#854f0b">Governance — independent gate</text>
+
+  <rect x="464" y="588" width="188" height="76" rx="8" fill="#faeeda" stroke="#854f0b" stroke-width="0.8"/>
+  <text class="th" x="558" y="608" text-anchor="middle" dominant-baseline="central" fill="#412402">DevGuard</text>
+  <text class="ts" x="558" y="626" text-anchor="middle" dominant-baseline="central" fill="#854f0b">verifies before release</text>
+  <text class="tl" x="558" y="644" text-anchor="middle" dominant-baseline="central">gates on integrity check</text>
+
+  <rect x="464" y="682" width="188" height="64" rx="8" fill="#faeeda" stroke="#854f0b" stroke-width="0.5" stroke-dasharray="4 3"/>
+  <text class="th" x="558" y="702" text-anchor="middle" dominant-baseline="central" fill="#412402">Any compliance tool</text>
+  <text class="ts" x="558" y="720" text-anchor="middle" dominant-baseline="central" fill="#854f0b">cosign verify --key</text>
+  <text class="tl" x="558" y="736" text-anchor="middle" dominant-baseline="central">by digest — anytime, anywhere</text>
+
+  <!-- Arrows from signature to verifiers -->
+  <path d="M200 492 Q116 492 116 588" fill="none" stroke="#0f6e56" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+  <path d="M480 492 Q558 492 558 588" fill="none" stroke="#0f6e56" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#arrow)"/>
+
+  <!-- ═══ Threat model ═══ -->
+  <rect x="28" y="816" width="624" height="124" rx="10" fill="#fcebeb" stroke="#a32d2d" stroke-width="0.8"/>
+  <text class="tm" x="340" y="838" text-anchor="middle" dominant-baseline="central" fill="#501313" style="font-size:11px">Why the signature is non-negotiable</text>
+  <text class="tl" x="340" y="858" text-anchor="middle" dominant-baseline="central" fill="#7a2020">Since only digests are consumed (never tags), the image itself cannot be swapped.</text>
+  <text class="tl" x="340" y="872" text-anchor="middle" dominant-baseline="central" fill="#7a2020">The remaining risk: forging an attestation against the correct digest.</text>
+
+  <rect x="100" y="888" width="180" height="40" rx="8" fill="#f7c1c1" stroke="#a32d2d" stroke-width="0.5"/>
+  <text class="th" x="190" y="904" text-anchor="middle" dominant-baseline="central" fill="#501313">Attacker</text>
+  <text class="ts" x="190" y="918" text-anchor="middle" dominant-baseline="central" fill="#a32d2d">attaches forged SBOM</text>
+
+  <rect x="340" y="888" width="280" height="40" rx="8" fill="#f7c1c1" stroke="#a32d2d" stroke-width="0.5"/>
+  <text class="th" x="480" y="904" text-anchor="middle" dominant-baseline="central" fill="#501313">Fake attestation accepted</text>
+  <text class="ts" x="480" y="918" text-anchor="middle" dominant-baseline="central" fill="#a32d2d">…unless a signature must verify first</text>
+
+  <line x1="280" y1="908" x2="340" y2="908" stroke="#a32d2d" stroke-width="1" fill="none" marker-end="url(#arrow-red)"/>
+
+  <!-- Legend -->
+  <line x1="44" y1="972" x2="76" y2="972" stroke="#0f6e56" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text class="tl" x="84" y="976" dominant-baseline="central">signature verified by stage / tool</text>
+  <line x1="300" y1="972" x2="332" y2="972" stroke="#888780" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+  <text class="tl" x="340" y="976" dominant-baseline="central">pipeline flow</text>
+  <line x1="470" y1="972" x2="502" y2="972" stroke="#a32d2d" stroke-width="1" fill="none" marker-end="url(#arrow-red)"/>
+  <text class="tl" x="510" y="976" dominant-baseline="central">attack path (without signature)</text>
+
+  <!-- Continues to Scope 2 -->
+  <rect x="220" y="1004" width="240" height="44" rx="10" fill="#eaf3de" stroke="#3b6d11" stroke-width="1"/>
+  <text class="th" x="340" y="1022" text-anchor="middle" dominant-baseline="central" fill="#173404">→ Scope 2: Release</text>
+  <text class="ts" x="340" y="1038" text-anchor="middle" dominant-baseline="central" fill="#3b6d11">tag created here for the first time</text>
+  <line x1="116" y1="776" x2="290" y2="1004" stroke="#534ab7" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+  <line x1="558" y1="746" x2="400" y2="1004" stroke="#854f0b" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+</svg>
