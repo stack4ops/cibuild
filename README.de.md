@@ -20,7 +20,9 @@
 ## Inhaltsverzeichnis
 
 1. [Überblick](#überblick)
-2. [Sicherheitsmodell](#sicherheitsmodell)
+2. [Designprinzipien](#designprinzipien)
+   - [Sicherheitsmodell](#sicherheitsmodell)
+   - [Digitale Souveränität](#digitale-souveränität)
 3. [Artifact-Lock-Dateien](#artifact-lock-dateien)
    - [Manuelle Verifikation und Auditing](#manuelle-verifikation-und-auditing)
 4. [Runs und Pipeline-Jobs](#runs-und-pipeline-jobs)
@@ -59,7 +61,13 @@ Laborumgebung bereit — siehe [`installer/README.md`](installer/README.md).
 
 ---
 
-## Sicherheitsmodell
+## Designprinzipien
+
+cibuild existiert, um zwei Überzeugungen darüber zu demonstrieren, wie Software
+gebaut und released werden sollte — eine technische, eine strategische. Beide
+sind vollständig dokumentiert:
+
+### Sicherheitsmodell
 
 cibuild ist um ein **Security-First**-Modell für die Supply Chain herum gebaut:
 kryptografische Nachvollziehbarkeit ist das strukturelle Fundament, kein
@@ -74,6 +82,13 @@ Compliance-Governance-Gate — ist separat dokumentiert:
 
 - **[Sicherheitsmodell](docs/SECURITY-MODEL.de.md)** (Deutsch)
 - **[Security Model](docs/SECURITY-MODEL.md)** (English)
+
+### Digitale Souveränität
+
+cibuild hält jeden Integrationspunkt — die CI-Plattform, die Build-Engine, die Registry, das Test-Backend — hinter einer schlanken, austauschbaren Abstraktion. Die Freiheit, ein Werkzeug zu verlassen, ohne alles neu zu bauen, wird als Vorbedingung digitaler Souveränität behandelt, nicht als nachträglicher Gedanke — und das praktische Lab ist Teil des Aufbaus jener Expertise, die solche Entscheidungen erst möglich macht.
+
+- **[Digitale Souveränität und die Freiheit zu gehen](docs/SOVEREIGNTY.de.md)** (Deutsch)
+- **[Digital Sovereignty and the Freedom to Leave](docs/SOVEREIGNTY.md)** (English)
 
 ---
 

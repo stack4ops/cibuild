@@ -19,7 +19,9 @@
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Security Model](#security-model)
+2. [Design Rationale](#design-rationale)
+   - [Security model](#security-model)
+   - [Digital sovereignty](#digital-sovereignty)
 3. [Artifact Lock Files](#artifact-lock-files)
    - [Manual Verification and Auditing](#manual-verification-and-auditing)
 4. [Runs and Pipeline Jobs](#runs-and-pipeline-jobs)
@@ -49,7 +51,12 @@ To explore all build modes locally or to develop cibuild itself, the `installer/
 
 ---
 
-## Security Model
+## Design Rationale
+
+cibuild exists to demonstrate two convictions about how software should be built
+and released — one technical, one strategic. Both are documented in full:
+
+### Security model
 
 cibuild is built around a **security-first** supply chain model: cryptographic traceability is the structural foundation, not an afterthought. Every artifact is tied to an immutable digest, every digest is signed, and the entire chain is verifiable by anyone, at any time, from any location.
 
@@ -57,6 +64,13 @@ The full model — the commit as cryptographic anchor, the artifact lock file, t
 
 - **[Security Model](docs/SECURITY-MODEL.md)** (English)
 - **[Sicherheitsmodell](docs/SECURITY-MODEL.de.md)** (Deutsch)
+
+### Digital sovereignty
+
+cibuild keeps every integration point — the CI platform, the build engine, the registry, the test backend — behind a thin, replaceable abstraction. The freedom to leave a tool without rebuilding everything is treated as a precondition of digital sovereignty, not an afterthought, and the hands-on lab is part of building the expertise that makes such choices possible.
+
+- **[Digital Sovereignty and the Freedom to Leave](docs/SOVEREIGNTY.md)** (English)
+- **[Digitale Souveränität und die Freiheit zu gehen](docs/SOVEREIGNTY.de.md)** (Deutsch)
 
 ---
 
