@@ -86,18 +86,6 @@ if [ $purge -eq 1 ]; then
 
   echo "if you want to update kubectl on next installation remove the binary manually"
 
-  echo "delete cosign private and public key"
-  
-  if [ -f  ./signing/cosign.key ]; then
-    echo "delete ./signing/cosign.key"
-    rm ./signing/cosign.key
-  fi
-
-  if [ -f  ./signing/cosign.pub ]; then
-    echo "delete ./signing/cosign.pub"
-    rm ./signing/cosign.pub
-  fi
-  
   docker volume rm cibuilder-trivy-cache >/dev/null 2>&1
 fi
 

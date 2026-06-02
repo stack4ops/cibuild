@@ -9,7 +9,7 @@ is tied to an immutable digest, every digest is signed, and the entire chain
 is verifiable by anyone, at any time, from any location.
 
 This document describes the model. For configuration variables and operational
-details, see the [reference documentation](./REFERENCE.md).
+details, see the [reference documentation](../REFERENCE.md).
 
 ---
 

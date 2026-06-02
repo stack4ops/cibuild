@@ -340,9 +340,10 @@ install() {
     export COSIGN_PASSWORD="" && ./cosign generate-key-pair
     mv cosign.key ./signing/
     mv cosign.pub ./signing/
-    sed -i "s/^CIBUILD_RELEASE_COSIGN_PRIVATE_KEY=.*/CIBUILD_RELEASE_COSIGN_PRIVATE_KEY=$(base64 -w 0 ./signing/cosign.key)/g" .env
-    sed -i "s/^CIBUILD_RELEASE_COSIGN_PUBLIC_KEY=.*/CIBUILD_RELEASE_COSIGN_PUBLIC_KEY=$(base64 -w 0 ./signing/cosign.pub)/g" .env
   fi
+  
+  sed -i "s/^CIBUILD_RELEASE_COSIGN_PRIVATE_KEY=.*/CIBUILD_RELEASE_COSIGN_PRIVATE_KEY=$(base64 -w 0 ./signing/cosign.key)/g" .env
+  sed -i "s/^CIBUILD_RELEASE_COSIGN_PUBLIC_KEY=.*/CIBUILD_RELEASE_COSIGN_PUBLIC_KEY=$(base64 -w 0 ./signing/cosign.pub)/g" .env
 }
 
 finish() {

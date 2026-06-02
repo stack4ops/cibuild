@@ -10,7 +10,7 @@ jeder Digest ist signiert, und die gesamte Kette ist von jeder Person, zu jeder
 Zeit, von jedem Ort aus überprüfbar.
 
 Dieses Dokument beschreibt das Modell. Konfigurationsvariablen und operative
-Details finden sich in der [Referenzdokumentation](./REFERENCE.md).
+Details finden sich in der [Referenzdokumentation](../REFERENCE.md).
 
 ---
 
