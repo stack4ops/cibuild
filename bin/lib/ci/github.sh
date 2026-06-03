@@ -406,7 +406,7 @@ cibuild_ci_commit_lock_file() {
     return 0
   fi
 
-  git commit -m "chore(lock): update ${lock_file}${skip ci}"
+  git commit -m "chore(lock): update ${lock_file}${skip_ci}"
   git push origin "HEAD:${GITHUB_REF_NAME}" || {
     cibuild_log_err "git push failed for ${lock_file}"
     return 1
