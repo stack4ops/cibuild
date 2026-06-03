@@ -161,6 +161,8 @@ cibuild__test_detect_docker() {
   local i=0
 
   while [ "$i" -lt "$timeout" ]; do
+    docker info
+    #if docker info >/dev/null 2>&1; then
     if docker info >/dev/null 2>&1; then
       return 0
     fi
