@@ -405,12 +405,24 @@ cibuild_ci_commit_lock_file() {
     cibuild_log_info "artifact-lock unchanged, no commit needed: ${lock_file}"
     return 0
   fi
-  git pull --rebase --ff-only
+
   git commit -m "chore(lock): update ${lock_file}${skip_ci}"
-  git push origin "HEAD:${GITHUB_REF_NAME}" || {
-    cibuild_log_err "git push failed for ${lock_file}"
-    return 1
-  }
+  
+  local i=1
+  while [ $i -le 5 ]; do
+    git pull --rebase && \
+    git push && break
+    echo "push failed, retrying ($i)..."
+    sleep $((i * 2))
+    i=$((i + 1))
+  done
+
+  # git pull --rebase --ff-only
+  # git commit -m "chore(lock): update ${lock_file}${skip_ci}"
+  # git push origin "HEAD:${GITHUB_REF_NAME}" || {
+  #   cibuild_log_err "git push failed for ${lock_file}"
+  #   return 1
+  # }
 
   cibuild_log_info "artifact-lock committed and pushed: ${lock_file}"
 }
