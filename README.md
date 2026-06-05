@@ -126,7 +126,7 @@ Because the lock file records every digest and the image is signed, anyone can v
 
 ```sh
 DIGEST=$(jq -r .image_digest artifact-lock.linux-amd64.json)
-cosign verify --key cosign.pub registry.example.com/myorg/myapp@"$DIGEST"
+cosign verify --private-infrastructure --key cosign.pub registry.example.com/myorg/myapp@"$DIGEST"
 ```
 
 The image is resolved by digest, not by tag — so the verification holds even if the tag was later moved or removed.
