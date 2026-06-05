@@ -354,7 +354,7 @@ cibuild_ci_commit_lock_file() {
     cibuild_log_info "artifact-lock unchanged, no commit needed: ${lock_file}"
     return 0
   fi
-
+  git pull --rebase --ff-only
   git commit -m "chore(lock): update ${lock_file}${skip_ci}"
   git push origin "HEAD:${CI_COMMIT_REF_NAME}" || {
     cibuild_log_err "git push failed for ${lock_file}"
