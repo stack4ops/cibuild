@@ -1,0 +1,203 @@
+<svg width="100%" viewBox="0 0 680 1180" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>Vision: Nix-native OCI — from today's conversion chain to reference-only image assembly</title>
+  <desc>Today, building an OCI image from Nix is a conversion chain: store path to NAR to tar layer to a fresh registry blob on every build. The vision references NAR blobs directly: the Nix daemon speaks oci:// natively, store paths live in Zot as content-addressed NAR blobs, and an image build only writes a manifest pointing at existing blobs. The same blob store is shared between the Nix binary cache and the OCI images, giving real deduplication. At runtime, NAR blobs are mounted on demand rather than materialized as tar. The whole picture is anchored by one upstream change: a Nix daemon that treats an OCI registry as a native substituter.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#3b6d11" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      text { font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace; }
+      .th { font-size: 13px; font-weight: 600; }
+      .ts { font-size: 11px; font-weight: 400; }
+      .tl { font-size: 10px; font-weight: 400; fill: #888; }
+      .tc { font-size: 10px; font-weight: 400; }
+      .tm { font-size: 10px; font-weight: 600; }
+      .sec { font-size: 10px; font-weight: 600; fill: #888780; letter-spacing: 0.08em; }
+    </style>
+  </defs>
+  <rect width="680" height="1180" fill="#fafaf8"/>
+
+  <!-- ═══════════ SECTION 1: today vs vision ═══════════ -->
+  <text class="sec" x="40" y="34" dominant-baseline="central">TODAY  ·  CONVERSION CHAIN</text>
+  <text class="sec" x="380" y="34" dominant-baseline="central" fill="#3b6d11">VISION  ·  REFERENCE ONLY</text>
+
+  <!-- ── TODAY column ── -->
+  <!-- nix build -->
+  <rect x="40" y="48" width="280" height="40" rx="8" fill="#e6f1fb" stroke="#85b7eb" stroke-width="0.6"/>
+  <text class="tm" x="56" y="64" dominant-baseline="central" fill="#0c447c">Nix build</text>
+  <text class="tc" x="56" y="78" dominant-baseline="central" fill="#5f5e5a">store path  ·  /nix/store/abc…-curl-8.x</text>
+  <line x1="180" y1="88" x2="180" y2="104" stroke="#888780" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- NAR serialize -->
+  <rect x="40" y="104" width="280" height="40" rx="8" fill="#f1efe8" stroke="#b4b2a9" stroke-width="0.6"/>
+  <text class="tm" x="56" y="120" dominant-baseline="central" fill="#2c2c2a">NAR serialization</text>
+  <text class="tc" x="56" y="134" dominant-baseline="central" fill="#5f5e5a">store path → NAR archive</text>
+  <line x1="180" y1="144" x2="180" y2="160" stroke="#888780" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- tar convert -->
+  <rect x="40" y="160" width="280" height="40" rx="8" fill="#f1efe8" stroke="#b4b2a9" stroke-width="0.6"/>
+  <text class="tm" x="56" y="176" dominant-baseline="central" fill="#2c2c2a">tar conversion</text>
+  <text class="tc" x="56" y="190" dominant-baseline="central" fill="#5f5e5a">NAR → OCI tar layer  ·  dockerTools</text>
+  <line x1="180" y1="200" x2="180" y2="216" stroke="#888780" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- blob push -->
+  <rect x="40" y="216" width="280" height="40" rx="8" fill="#faece7" stroke="#f0997b" stroke-width="0.6"/>
+  <text class="tm" x="56" y="232" dominant-baseline="central" fill="#4a1b0c">OCI layer blob push</text>
+  <text class="tc" x="56" y="246" dominant-baseline="central" fill="#993c1d">new blob on every build</text>
+  <line x1="180" y1="256" x2="180" y2="272" stroke="#888780" stroke-width="1" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- manifest today -->
+  <rect x="40" y="272" width="280" height="96" rx="8" fill="#faece7" stroke="#993c1d" stroke-width="1"/>
+  <text class="tm" x="56" y="290" dominant-baseline="central" fill="#4a1b0c">OCI image manifest</text>
+  <text class="tc" x="56" y="308" dominant-baseline="central" fill="#5f5e5a">layer: sha256:TAR_curl</text>
+  <text class="tc" x="56" y="324" dominant-baseline="central" fill="#5f5e5a">layer: sha256:TAR_openssl</text>
+  <text class="tc" x="56" y="340" dominant-baseline="central" fill="#5f5e5a">layer: sha256:TAR_glibc</text>
+  <text class="tl" x="56" y="356" dominant-baseline="central">layer = converted copy</text>
+
+  <!-- arrow between columns -->
+  <line x1="324" y1="208" x2="376" y2="208" stroke="#3b6d11" stroke-width="1.2" fill="none" marker-end="url(#arrow-green)"/>
+
+  <!-- ── VISION column ── -->
+  <!-- nix build -->
+  <rect x="380" y="48" width="260" height="40" rx="8" fill="#e6f1fb" stroke="#85b7eb" stroke-width="0.6"/>
+  <text class="tm" x="396" y="64" dominant-baseline="central" fill="#0c447c">Nix build</text>
+  <text class="tc" x="396" y="78" dominant-baseline="central" fill="#5f5e5a">store path  ·  /nix/store/abc…-curl-8.x</text>
+  <line x1="510" y1="88" x2="510" y2="104" stroke="#3b6d11" stroke-width="1" fill="none" marker-end="url(#arrow-green)"/>
+
+  <!-- NAR -> OCI blob -->
+  <rect x="380" y="104" width="260" height="40" rx="8" fill="#e1f5ee" stroke="#5dcaa5" stroke-width="0.6"/>
+  <text class="tm" x="396" y="120" dominant-baseline="central" fill="#085041">NAR → OCI blob push</text>
+  <text class="tc" x="396" y="134" dominant-baseline="central" fill="#0f6e56">store path as NAR blob  ·  once</text>
+  <line x1="510" y1="144" x2="510" y2="160" stroke="#3b6d11" stroke-width="1" fill="none" marker-end="url(#arrow-green)"/>
+  <text class="tl" x="520" y="152" dominant-baseline="central">metadata only</text>
+
+  <!-- manifest writer -->
+  <rect x="380" y="160" width="260" height="40" rx="8" fill="#eaf3de" stroke="#97c459" stroke-width="0.6"/>
+  <text class="tm" x="396" y="176" dominant-baseline="central" fill="#173404">image manifest writer</text>
+  <text class="tc" x="396" y="190" dominant-baseline="central" fill="#3b6d11">points at existing blobs  ·  no tar</text>
+  <line x1="510" y1="200" x2="510" y2="272" stroke="#3b6d11" stroke-width="1" fill="none" marker-end="url(#arrow-green)"/>
+
+  <!-- manifest vision -->
+  <rect x="380" y="272" width="260" height="96" rx="8" fill="#eaf3de" stroke="#3b6d11" stroke-width="1"/>
+  <text class="tm" x="396" y="290" dominant-baseline="central" fill="#173404">OCI image manifest  ·  refs only</text>
+  <text class="tc" x="396" y="308" dominant-baseline="central" fill="#5f5e5a">layer: sha256:NAR_curl</text>
+  <text class="tc" x="396" y="324" dominant-baseline="central" fill="#5f5e5a">layer: sha256:NAR_openssl</text>
+  <text class="tc" x="396" y="340" dominant-baseline="central" fill="#5f5e5a">layer: sha256:NAR_glibc</text>
+  <text class="tl" x="396" y="356" dominant-baseline="central" fill="#3b6d11">layer = direct NAR-blob reference</text>
+
+  <!-- divider -->
+  <line x1="40" y1="396" x2="640" y2="396" stroke="#e0ded6" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- ═══════════ SECTION 2: Zot shared store ═══════════ -->
+  <text class="sec" x="40" y="416" dominant-baseline="central">ZOT OCI REGISTRY  ·  SHARED CONTENT-ADDRESSED BLOB STORE</text>
+
+  <rect x="40" y="430" width="600" height="180" rx="10" fill="#eeedfe" stroke="#afa9ec" stroke-width="0.8"/>
+  <text class="ts" x="56" y="450" dominant-baseline="central" fill="#3c3489" font-weight="600">one store for the Nix binary cache and the OCI images built from it</text>
+
+  <!-- NAR blobs box -->
+  <rect x="56" y="466" width="280" height="128" rx="8" fill="#e1f5ee" stroke="#5dcaa5" stroke-width="0.6"/>
+  <text class="tm" x="72" y="484" dominant-baseline="central" fill="#085041">NAR blobs  ·  stored once</text>
+  <text class="tc" x="72" y="504" dominant-baseline="central" fill="#5f5e5a">sha256:NAR_curl    curl-8.x.nar.zstd</text>
+  <text class="tc" x="72" y="522" dominant-baseline="central" fill="#5f5e5a">sha256:NAR_openssl openssl-3.x.nar.zstd</text>
+  <text class="tc" x="72" y="540" dominant-baseline="central" fill="#5f5e5a">sha256:NAR_glibc   glibc-2.x.nar.zstd</text>
+  <text class="tc" x="72" y="558" dominant-baseline="central" fill="#5f5e5a">sha256:NAR_bash    bash-5.x.nar.zstd</text>
+  <text class="tl" x="72" y="576" dominant-baseline="central">⋯ content-addressed</text>
+
+  <!-- manifests box -->
+  <rect x="344" y="466" width="280" height="128" rx="8" fill="#faece7" stroke="#f0997b" stroke-width="0.6"/>
+  <text class="tm" x="360" y="484" dominant-baseline="central" fill="#4a1b0c">OCI image manifests  ·  reference</text>
+  <text class="tc" x="360" y="504" dominant-baseline="central" fill="#5f5e5a">image-amd64 → curl, openssl, glibc</text>
+  <text class="tc" x="360" y="522" dominant-baseline="central" fill="#5f5e5a">image-arm64 → curl, openssl, glibc</text>
+  <text class="tc" x="360" y="540" dominant-baseline="central" fill="#5f5e5a">image-v2    → curl_v2, openssl, glibc</text>
+  <text class="tl" x="360" y="566" dominant-baseline="central">openssl + glibc:</text>
+  <text class="tl" x="360" y="580" dominant-baseline="central">one blob · N images</text>
+
+  <!-- dedup arrows manifests -> blobs -->
+  <line x1="344" y1="530" x2="336" y2="530" stroke="#888780" stroke-width="0.8" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- divider -->
+  <line x1="40" y1="636" x2="640" y2="636" stroke="#e0ded6" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- ═══════════ SECTION 3: dedup comparison ═══════════ -->
+  <text class="sec" x="40" y="656" dominant-baseline="central">DEDUPLICATION  ·  REAL SAVING</text>
+
+  <!-- today -->
+  <rect x="40" y="670" width="192" height="92" rx="8" fill="#f1efe8" stroke="#b4b2a9" stroke-width="0.6"/>
+  <text class="tm" x="56" y="688" dominant-baseline="central" fill="#2c2c2a">today</text>
+  <text class="tc" x="56" y="708" dominant-baseline="central" fill="#5f5e5a">amd64 layer = tar copy</text>
+  <text class="tc" x="56" y="724" dominant-baseline="central" fill="#5f5e5a">arm64 layer = tar copy</text>
+  <text class="tl" x="56" y="744" dominant-baseline="central">2× storage, same content</text>
+
+  <!-- vision -->
+  <rect x="244" y="670" width="192" height="92" rx="8" fill="#eaf3de" stroke="#97c459" stroke-width="0.6"/>
+  <text class="tm" x="260" y="688" dominant-baseline="central" fill="#173404">vision</text>
+  <text class="tc" x="260" y="708" dominant-baseline="central" fill="#5f5e5a">amd64 manifest → sha256:NAR</text>
+  <text class="tc" x="260" y="724" dominant-baseline="central" fill="#5f5e5a">arm64 manifest → sha256:NAR</text>
+  <text class="tl" x="260" y="744" dominant-baseline="central" fill="#3b6d11">1× blob, 2× referenced</text>
+
+  <!-- image build -->
+  <rect x="448" y="670" width="192" height="92" rx="8" fill="#eaf3de" stroke="#97c459" stroke-width="0.6"/>
+  <text class="tm" x="464" y="688" dominant-baseline="central" fill="#173404">image build</text>
+  <text class="tc" x="464" y="708" dominant-baseline="central" fill="#993c1d" text-decoration="line-through">tar conversion</text>
+  <text class="tc" x="464" y="724" dominant-baseline="central" fill="#993c1d" text-decoration="line-through">layer push</text>
+  <text class="tl" x="464" y="744" dominant-baseline="central" fill="#3b6d11">only write a manifest</text>
+
+  <!-- divider -->
+  <line x1="40" y1="788" x2="640" y2="788" stroke="#e0ded6" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- ═══════════ SECTION 4: runtime ═══════════ -->
+  <text class="sec" x="40" y="808" dominant-baseline="central">RUNTIME  ·  NAR-LAYER MOUNTING WITHOUT CONVERSION</text>
+
+  <!-- nix-snapshotter -->
+  <rect x="40" y="822" width="192" height="92" rx="8" fill="#e6f1fb" stroke="#85b7eb" stroke-width="0.6"/>
+  <text class="tm" x="56" y="840" dominant-baseline="central" fill="#0c447c">nix-snapshotter</text>
+  <text class="tc" x="56" y="860" dominant-baseline="central" fill="#5f5e5a">containerd plugin</text>
+  <text class="tc" x="56" y="876" dominant-baseline="central" fill="#5f5e5a">NAR → filesystem mount</text>
+  <text class="tl" x="56" y="896" dominant-baseline="central">today (stalled, 2023)</text>
+
+  <!-- lazy fetcher -->
+  <rect x="244" y="822" width="192" height="92" rx="8" fill="#f1efe8" stroke="#b4b2a9" stroke-width="0.6"/>
+  <text class="tm" x="260" y="840" dominant-baseline="central" fill="#2c2c2a">lazy NAR fetcher</text>
+  <text class="tc" x="260" y="860" dominant-baseline="central" fill="#5f5e5a">NAR blob on-demand pull</text>
+  <text class="tc" x="260" y="876" dominant-baseline="central" fill="#5f5e5a">like estargz / nydus</text>
+  <text class="tl" x="260" y="896" dominant-baseline="central" fill="#3b6d11">vision: standard runtime</text>
+
+  <!-- manifest-only builder -->
+  <rect x="448" y="822" width="192" height="92" rx="8" fill="#eaf3de" stroke="#97c459" stroke-width="0.6"/>
+  <text class="tm" x="464" y="840" dominant-baseline="central" fill="#173404">argunix build client</text>
+  <text class="tc" x="464" y="860" dominant-baseline="central" fill="#5f5e5a">NAR blobs already in Zot</text>
+  <text class="tc" x="464" y="876" dominant-baseline="central" fill="#5f5e5a">image = write a manifest</text>
+  <text class="tl" x="464" y="896" dominant-baseline="central" fill="#3b6d11">vision: manifest-only</text>
+
+  <!-- divider -->
+  <line x1="40" y1="940" x2="640" y2="940" stroke="#e0ded6" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- ═══════════ SECTION 5: nix.conf substituter ═══════════ -->
+  <text class="sec" x="40" y="960" dominant-baseline="central">NIX DAEMON  ·  NATIVE OCI SUBSTITUTER  (THE UPSTREAM ANCHOR)</text>
+
+  <!-- today -->
+  <rect x="40" y="974" width="290" height="92" rx="8" fill="#f1efe8" stroke="#b4b2a9" stroke-width="0.6"/>
+  <text class="tm" x="56" y="992" dominant-baseline="central" fill="#2c2c2a">today</text>
+  <text class="tc" x="56" y="1012" dominant-baseline="central" fill="#5f5e5a">substituters =</text>
+  <text class="tc" x="56" y="1028" dominant-baseline="central" fill="#5f5e5a">  https://cache.nixos.org</text>
+  <text class="tl" x="56" y="1048" dominant-baseline="central">HTTP cache protocol · proxy needed for OCI</text>
+
+  <!-- vision -->
+  <rect x="350" y="974" width="290" height="92" rx="8" fill="#eaf3de" stroke="#3b6d11" stroke-width="1"/>
+  <text class="tm" x="366" y="992" dominant-baseline="central" fill="#173404">vision  ·  Nix RFC open</text>
+  <text class="tc" x="366" y="1012" dominant-baseline="central" fill="#5f5e5a">substituters =</text>
+  <text class="tc" x="366" y="1028" dominant-baseline="central" fill="#5f5e5a">  oci://zot.example.com/nixcache</text>
+  <text class="tl" x="366" y="1048" dominant-baseline="central" fill="#3b6d11">OCI distribution spec direct · no proxy</text>
+
+  <!-- arrow today -> vision -->
+  <line x1="330" y1="1020" x2="350" y2="1020" stroke="#3b6d11" stroke-width="1.2" fill="none" marker-end="url(#arrow-green)"/>
+
+  <!-- footer note -->
+  <rect x="40" y="1090" width="600" height="66" rx="10" fill="#e1f5ee" stroke="#5dcaa5" stroke-width="0.8"/>
+  <text class="th" x="340" y="1110" text-anchor="middle" dominant-baseline="central" fill="#085041">one anchor change enables the whole picture</text>
+  <text class="ts" x="340" y="1130" text-anchor="middle" dominant-baseline="central" fill="#0f6e56">a Nix daemon that treats an OCI registry as a native substituter —</text>
+  <text class="ts" x="340" y="1146" text-anchor="middle" dominant-baseline="central" fill="#0f6e56">no conversion chain, real deduplication, manifest-only builds</text>
+</svg>
