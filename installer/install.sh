@@ -336,14 +336,14 @@ install() {
     mkdir "./signing"
   fi
 
-  if [ ! -f "signing/codesign.key" ] || [ ! -f "signing/codesign.pub" ]; then
+  if [ ! -f "signing/cosign.key" ] || [ ! -f "signing/cosign.pub" ]; then
     export COSIGN_PASSWORD="" && ./cosign generate-key-pair
     mv cosign.key ./signing/
     mv cosign.pub ./signing/
   fi
   
-  sed -i "s/^CIBUILD_RELEASE_COSIGN_PRIVATE_KEY=.*/CIBUILD_RELEASE_COSIGN_PRIVATE_KEY=$(base64 -w 0 ./signing/cosign.key)/g" .env
-  sed -i "s/^CIBUILD_RELEASE_COSIGN_PUBLIC_KEY=.*/CIBUILD_RELEASE_COSIGN_PUBLIC_KEY=$(base64 -w 0 ./signing/cosign.pub)/g" .env
+  sed -i "s/^CIBUILD_COSIGN_PRIVATE_KEY=.*/CIBUILD_COSIGN_PRIVATE_KEY=$(base64 -w 0 ./signing/cosign.key)/g" .env
+  sed -i "s/^CIBUILD_COSIGN_PUBLIC_KEY=.*/CIBUILD_COSIGN_PUBLIC_KEY=$(base64 -w 0 ./signing/cosign.pub)/g" .env
 }
 
 finish() {
