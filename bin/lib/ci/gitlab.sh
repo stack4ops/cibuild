@@ -339,6 +339,9 @@ cibuild_ci_commit_lock_file() {
     return 1
   fi
 
+  BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}}"
+  [ -z "$BRANCH" ] && { cibuild_log_err "no branch context, skipping cibuild_ci_commit_lock_file"; return 0; }
+  
   local remote_url
   remote_url=$(echo "${CI_PROJECT_URL}" | sed "s|https://|https://gitlab-ci-token:${CIBUILD_CI_TOKEN}@|")
 
@@ -354,9 +357,13 @@ cibuild_ci_commit_lock_file() {
     cibuild_log_info "artifact-lock unchanged, no commit needed: ${lock_file}"
     return 0
   fi
-  
+
+  git checkout -B "$BRANCH" \
+  --track "origin/$BRANCH" 2>/dev/null \
+  || git checkout -B "$BRANCH" "origin/$BRANCH"
+
   git commit -m "chore(lock): update ${lock_file}${skip_ci}"
-  
+
   local i=1
   while [ $i -le 5 ]; do
     git pull --rebase && \
@@ -365,12 +372,6 @@ cibuild_ci_commit_lock_file() {
     sleep $((i * 2))
     i=$((i + 1))
   done
-  # git pull --rebase --ff-only
-  # git commit -m "chore(lock): update ${lock_file}${skip_ci}"
-  # git push origin "HEAD:${CI_COMMIT_REF_NAME}" || {
-  #   cibuild_log_err "git push failed for ${lock_file}"
-  #   return 1
-  # }
 
   cibuild_log_info "artifact-lock committed and pushed: ${lock_file}"
 }
