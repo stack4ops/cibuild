@@ -376,23 +376,9 @@ cibuild_ci_commit_lock_file() {
     return 1
   fi
 
-  if [ -z "${CI_PROJECT_URL:-}" ] || [ -z "${CIBUILD_CI_TOKEN:-}" ]; then
-    cibuild_log_err "cibuild_ci_commit_lock_file: CI_PROJECT_URL or CIBUILD_CI_TOKEN not set"
-    return 1
-  fi
-
   BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}}"
   [ -z "$BRANCH" ] && { cibuild_log_err "no branch context, skipping cibuild_ci_commit_lock_file"; return 0; }
   
-  local remote_url
-  remote_url=$(echo "${CI_PROJECT_URL}" | sed "s|https://|https://gitlab-ci-token:${CIBUILD_CI_TOKEN}@|")
-
-  git config --global user.email "cibuild@ci.gitlab"
-  git config --global user.name  "cibuild"
-  git config --global safe.directory '*'
-
-  git remote set-url origin "${remote_url}" 2>/dev/null || true
-
   git checkout -B "$BRANCH" \
     --track "origin/$BRANCH" 2>/dev/null \
     || git checkout -B "$BRANCH" "origin/$BRANCH"
@@ -408,8 +394,9 @@ cibuild_ci_commit_lock_file() {
 
   local i=1
   while [ $i -le 5 ]; do
-    if git pull --rebase && git add "${lock_file}" && git push; then
-      break
+    if git pull --rebase; then
+      git add "${lock_file}"
+      git push && break
     fi
     git rebase --abort 2>/dev/null || true
     if [ $i -eq 5 ]; then
