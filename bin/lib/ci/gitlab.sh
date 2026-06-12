@@ -408,15 +408,15 @@ cibuild_ci_commit_lock_file() {
 
   local i=1
   while [ $i -le 5 ]; do
-    if git pull --rebase; then
+    if git pull --rebase && git add "${lock_file}" && git push; then
       break
     fi
     git rebase --abort 2>/dev/null || true
     if [ $i -eq 5 ]; then
-      cibuild_log_error "rebase failed after 5 attempts"
+      cibuild_log_error "artifact-lock push failed after 5 attempts: ${lock_file}"
       return 1
     fi
-    cibuild_log_info "rebase failed, retrying ($i/5)..."
+    cibuild_log_info "push failed, retrying ($i/5)..."
     sleep $((i * 2))
     i=$((i + 1))
   done
