@@ -369,9 +369,43 @@ cibuild__ci_init() {
   if [ -z "$_CIBUILD_DATE_TIME" ]; then
      _CIBUILD_DATE_TIME=$(date +%F_%H-%M-%S)
   fi
+
+  cibuild_ci_rebase_repo
 }
 
-cibuild__ci_init
+# rebase from previous job commits
+cibuild_ci_rebase_repo() {
+  
+  if [ -z "${GITHUB_TOKEN:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ]; then
+    cibuild_log_err "cibuild_ci_rebase_repo: GITHUB_TOKEN or GITHUB_REPOSITORY not set"
+    return 1
+  fi
+
+  local remote_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+  git config --global user.email "cibuild@ci.github"
+  git config --global user.name  "cibuild"
+  git config --global safe.directory '*'
+
+  git remote set-url origin "${remote_url}" 2>/dev/null || true
+
+  local i=1
+  while [ $i -le 5 ]; do
+    if git pull --rebase; then
+      break
+    fi
+    git rebase --abort 2>/dev/null || true
+    if [ $i -eq 5 ]; then
+      cibuild_log_error "rebase failed after 5 attempts"
+      return 1
+    fi
+    cibuild_log_info "pull failed, retrying ($i/5)..."
+    sleep $((i * 2))
+    i=$((i + 1))
+  done
+
+  cibuild_log_info "repo rebased"
+}
 
 # Commit artifact-lock.<platform>.json back to the branch.
 # Uses [skip ci] to prevent pipeline loop.
@@ -386,19 +420,6 @@ cibuild_ci_commit_lock_file() {
     return 1
   fi
 
-  if [ -z "${GITHUB_TOKEN:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ]; then
-    cibuild_log_err "cibuild_ci_commit_lock_file: GITHUB_TOKEN or GITHUB_REPOSITORY not set"
-    return 1
-  fi
-
-  local remote_url="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-
-  git config --global user.email "cibuild@ci.github"
-  git config --global user.name  "cibuild"
-  git config --global safe.directory '*'
-
-  git remote set-url origin "${remote_url}" 2>/dev/null || true
-
   git add "${lock_file}"
 
   if git diff --cached --quiet; then
@@ -410,19 +431,23 @@ cibuild_ci_commit_lock_file() {
   
   local i=1
   while [ $i -le 5 ]; do
-    git pull --rebase && \
-    git push && break
-    echo "push failed, retrying ($i)..."
+    if git pull --rebase; then
+      git add "${lock_file}"
+      git push && break
+    fi
+    git rebase --abort 2>/dev/null || true
+    if [ $i -eq 5 ]; then
+      cibuild_log_error "artifact-lock push failed after 5 attempts: ${lock_file}"
+      return 1
+    fi
+    cibuild_log_info "push failed, retrying ($i/5)..."
     sleep $((i * 2))
     i=$((i + 1))
   done
 
-  # git pull --rebase --ff-only
-  # git commit -m "chore(lock): update ${lock_file}${skip_ci}"
-  # git push origin "HEAD:${GITHUB_REF_NAME}" || {
-  #   cibuild_log_err "git push failed for ${lock_file}"
-  #   return 1
-  # }
-
   cibuild_log_info "artifact-lock committed and pushed: ${lock_file}"
+
 }
+
+cibuild__ci_init
+
