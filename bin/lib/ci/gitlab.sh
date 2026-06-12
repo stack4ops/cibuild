@@ -316,9 +316,51 @@ cibuild__ci_init() {
   if [ -z "$_CIBUILD_DATE_TIME" ]; then
      _CIBUILD_DATE_TIME=$(date +%F_%H-%M-%S)
   fi
+
+  cibuild_ci_rebase_repo
 }
 
-cibuild__ci_init
+# rebase from previous job commits
+cibuild_ci_rebase_repo() {
+  if [ -z "${CI_PROJECT_URL:-}" ] || [ -z "${CIBUILD_CI_TOKEN:-}" ]; then
+    cibuild_log_err "cibuild_ci_rebase_repo: CI_PROJECT_URL or CIBUILD_CI_TOKEN not set"
+    return 1
+  fi
+
+  BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}}"
+  [ -z "$BRANCH" ] && { cibuild_log_err "no branch context, skipping cibuild_ci_rebase_repo"; return 0; }
+
+  local remote_url
+  remote_url=$(echo "${CI_PROJECT_URL}" | sed "s|https://|https://gitlab-ci-token:${CIBUILD_CI_TOKEN}@|")
+
+  git config --global user.email "cibuild@ci.gitlab"
+  git config --global user.name  "cibuild"
+  git config --global safe.directory '*'
+
+  git remote set-url origin "${remote_url}" 2>/dev/null || true
+
+  git checkout -B "$BRANCH" \
+  --track "origin/$BRANCH" 2>/dev/null \
+  || git checkout -B "$BRANCH" "origin/$BRANCH"
+
+  local i=1
+  while [ $i -le 5 ]; do
+    if git pull --rebase; then
+      break
+    fi
+    git rebase --abort 2>/dev/null || true
+    if [ $i -eq 5 ]; then
+      cibuild_log_error "rebase failed after 5 attempts"
+      return 1
+    fi
+    cibuild_log_info "pull failed, retrying ($i/5)..."
+    sleep $((i * 2))
+    i=$((i + 1))
+  done
+
+  cibuild_log_info "repo rebased"
+}
+
 # Commit artifact-lock.<platform>.json back to the branch.
 # Uses [skip ci] to prevent pipeline loop.
 # Requires CIBUILD_CI_TOKEN with write_repository scope and git configured.
@@ -339,7 +381,7 @@ cibuild_ci_commit_lock_file() {
     return 1
   fi
 
-  BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}}"
+  BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}}"
   [ -z "$BRANCH" ] && { cibuild_log_err "no branch context, skipping cibuild_ci_commit_lock_file"; return 0; }
   
   local remote_url
@@ -351,6 +393,10 @@ cibuild_ci_commit_lock_file() {
 
   git remote set-url origin "${remote_url}" 2>/dev/null || true
 
+  git checkout -B "$BRANCH" \
+    --track "origin/$BRANCH" 2>/dev/null \
+    || git checkout -B "$BRANCH" "origin/$BRANCH"
+
   git add "${lock_file}"
 
   if git diff --cached --quiet; then
@@ -358,20 +404,25 @@ cibuild_ci_commit_lock_file() {
     return 0
   fi
 
-  git checkout -B "$BRANCH" \
-  --track "origin/$BRANCH" 2>/dev/null \
-  || git checkout -B "$BRANCH" "origin/$BRANCH"
-
   git commit -m "chore(lock): update ${lock_file}${skip_ci}"
 
   local i=1
   while [ $i -le 5 ]; do
-    git pull --rebase && \
-    git push && break
-    echo "push failed, retrying ($i)..."
+    if git pull --rebase; then
+      break
+    fi
+    git rebase --abort 2>/dev/null || true
+    if [ $i -eq 5 ]; then
+      cibuild_log_error "rebase failed after 5 attempts"
+      return 1
+    fi
+    cibuild_log_info "rebase failed, retrying ($i/5)..."
     sleep $((i * 2))
     i=$((i + 1))
   done
 
   cibuild_log_info "artifact-lock committed and pushed: ${lock_file}"
 }
+
+cibuild__ci_init
+
