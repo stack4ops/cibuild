@@ -90,7 +90,7 @@ cibuild__build_write_artifact_lock() {
 
   if cibuild_function_exists cibuild_ci_commit_lock_file; then
     cibuild_ci_commit_lock_file "${lock_file}" || \
-      cibuild_log_err "artifact-lock commit failed (non-fatal)"
+      cibuild_main_err "artifact-lock commit failed (fatal)"
   else
     cibuild_log_info "cibuild_ci_commit_lock_file not implemented for this adapter — skipping commit"
   fi
