@@ -498,6 +498,16 @@ cibuild__test_image() {
           "keep"
         end),
         port: (.port // ""),
+        uri:
+        (if has("uri")
+        then
+          if (.uri | type == "string")
+          then .uri
+          else error("uri must be string")
+          end
+        else
+          "/"
+        end),
         assert,
         cmd: (.cmd // [])
       }
