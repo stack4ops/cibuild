@@ -250,6 +250,8 @@ cibuild__test_assert_response_docker() {
 cibuild__test_assert_response_kubernetes() {
   local assert="$1" \
         entrypoint="$3" \
+        uri="$4" \
+        data_raw="$5" \
         test_run_timeout=$(cibuild_env_get 'test_run_timeout')
   
   # global
@@ -292,8 +294,18 @@ cibuild__test_assert_response_kubernetes() {
     cibuild_main_err "[failed] could not forward port"
   fi
 
-  if ! curl --silent -m 5 "http://${_host}:${_test_id}/" | grep "$assert" >/dev/null 2>&1; then
-    cibuild_main_err "[failed] Test failed!"
+  if [ "$data_raw" = "null" ]; then
+    if ! curl --silent -m 5 "http://${_host}:${_test_id}${uri}" | grep "$assert" >/dev/null 2>&1; then
+      cibuild_log_err "[failed] Test failed!"
+      docker rm -f "$_container" >/dev/null 2>&1
+      exit 1
+    fi
+  else
+    if ! curl --silent -m 5 "http://${_host}:${_test_id}${uri}" --data-raw "${data_raw}" | grep "$assert" >/dev/null 2>&1; then
+      cibuild_log_err "[failed] Test failed!"
+      docker rm -f "$_container" >/dev/null 2>&1
+      exit 1
+    fi
   fi
 
   cibuild_log_info "[success] Test successful"
