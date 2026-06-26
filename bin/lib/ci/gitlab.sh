@@ -327,7 +327,7 @@ cibuild_ci_rebase_repo() {
     return 1
   fi
 
-  BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}}"
+  BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}}"
   [ -z "$BRANCH" ] && { cibuild_log_err "no branch context, skipping cibuild_ci_rebase_repo"; return 0; }
 
   local remote_url
