@@ -194,6 +194,8 @@ cibuild__test_detect_kubernetes() {
 cibuild__test_assert_response_docker() {
   local assert="$1" \
         entrypoint="$3" \
+        uri="$4" \
+        data_raw="$5" \
         test_run_timeout=$(cibuild_env_get 'test_run_timeout')
   
   # global
@@ -227,10 +229,18 @@ cibuild__test_assert_response_docker() {
     exit 1
   fi
 
-  if ! curl --silent -m 5 "http://${_host}:${_test_id}/" | grep "$assert" >/dev/null 2>&1; then
-    cibuild_log_err "[failed] Test failed!"
-    docker rm -f "$_container" >/dev/null 2>&1
-    exit 1
+  if [ "$data_raw" = "null" ]; then
+    if ! curl --silent -m 5 "http://${_host}:${_test_id}${uri}" | grep "$assert" >/dev/null 2>&1; then
+      cibuild_log_err "[failed] Test failed!"
+      docker rm -f "$_container" >/dev/null 2>&1
+      exit 1
+    fi
+  else
+    if ! curl --silent -m 5 "http://${_host}:${_test_id}${uri}" --data-raw "${data_raw}" | grep "$assert" >/dev/null 2>&1; then
+      cibuild_log_err "[failed] Test failed!"
+      docker rm -f "$_container" >/dev/null 2>&1
+      exit 1
+    fi
   fi
 
   cibuild_log_info "[success] Test successful"
@@ -240,6 +250,8 @@ cibuild__test_assert_response_docker() {
 cibuild__test_assert_response_kubernetes() {
   local assert="$1" \
         entrypoint="$3" \
+        uri="$4" \
+        data_raw="$5" \
         test_run_timeout=$(cibuild_env_get 'test_run_timeout')
   
   # global
@@ -282,8 +294,18 @@ cibuild__test_assert_response_kubernetes() {
     cibuild_main_err "[failed] could not forward port"
   fi
 
-  if ! curl --silent -m 5 "http://${_host}:${_test_id}/" | grep "$assert" >/dev/null 2>&1; then
-    cibuild_main_err "[failed] Test failed!"
+  if [ "$data_raw" = "null" ]; then
+    if ! curl --silent -m 5 "http://${_host}:${_test_id}${uri}" | grep "$assert" >/dev/null 2>&1; then
+      cibuild_log_err "[failed] Test failed!"
+      docker rm -f "$_container" >/dev/null 2>&1
+      exit 1
+    fi
+  else
+    if ! curl --silent -m 5 "http://${_host}:${_test_id}${uri}" --data-raw "${data_raw}" | grep "$assert" >/dev/null 2>&1; then
+      cibuild_log_err "[failed] Test failed!"
+      docker rm -f "$_container" >/dev/null 2>&1
+      exit 1
+    fi
   fi
 
   cibuild_log_info "[success] Test successful"
@@ -497,6 +519,17 @@ cibuild__test_image() {
           "keep"
         end),
         port: (.port // ""),
+        uri:
+        (if has("uri")
+        then
+          if (.uri | type == "string")
+          then .uri
+          else error("uri must be string")
+          end
+        else
+          "/"
+        end),
+        data_raw,
         assert,
         cmd: (.cmd // [])
       }
@@ -507,6 +540,8 @@ cibuild__test_image() {
         type=$(printf '%s\n' "$item" | jq -r '.type')
         entrypoint=$(printf '%s\n' "$item" | jq -r '.entrypoint')
         port=$(printf '%s\n' "$item" | jq -r '.port')
+        uri=$(printf '%s\n' "$item" | jq -r '.uri')
+        data_raw=$(printf '%s\n' "$item" | jq -r '.data_raw')
         assert=$(printf '%s\n' "$item" | jq -r '.assert')
         cmd_json=$(printf '%s\n' "$item" | jq -c '.cmd // []')
 
@@ -522,7 +557,7 @@ EOF
           assert_log "$assert" "$entrypoint" "$@"
           ;;
         response)
-          assert_response "$assert" "$port" "$entrypoint" "$@"
+          assert_response "$assert" "$port" "$entrypoint" "$uri" "$data_raw" "$@"
           ;;
         *)
           cibuild_main_err "unknown assert type: $type"
