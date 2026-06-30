@@ -309,6 +309,8 @@ cibuild__ci_init() {
   # target ref: normal branch or MR target
   _CIBUILD_CI_REF="${CI_COMMIT_REF_NAME:-$CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
 
+  cibuild_log_info "_CIBUILD_CI_REF=${_CIBUILD_CI_REF}"
+
   if [ -z "$_CIBUILD_DATE" ]; then
     _CIBUILD_DATE=$(date +%F)
   fi
