@@ -306,8 +306,14 @@ cibuild__ci_init() {
 
   _CIBUILD_CI_COMMIT="${CI_COMMIT_SHA:-}"
 
+  if [ "${CI_PIPELINE_SOURCE:-}" = "merge_request_event" ]; then
+    _CIBUILD_CI_REF="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}"
+  else
+    _CIBUILD_CI_REF="${CI_COMMIT_REF_NAME:-}"
+  fi
+  
   # target ref: normal branch or MR target
-  _CIBUILD_CI_REF="${CI_COMMIT_REF_NAME:-$CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
+  #_CIBUILD_CI_REF="${CI_COMMIT_REF_NAME:-$CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
 
   cibuild_log_info "_CIBUILD_CI_REF=${_CIBUILD_CI_REF}"
 
