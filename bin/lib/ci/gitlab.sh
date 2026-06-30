@@ -322,93 +322,203 @@ cibuild__ci_init() {
 
 # rebase from previous job commits
 cibuild_ci_rebase_repo() {
-  if [ -z "${CI_PROJECT_URL:-}" ] || [ -z "${CIBUILD_CI_TOKEN:-}" ]; then
-    cibuild_log_err "cibuild_ci_rebase_repo: CI_PROJECT_URL or CIBUILD_CI_TOKEN not set"
-    return 1
-  fi
-
-  BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}}"
-  [ -z "$BRANCH" ] && { cibuild_log_err "no branch context, skipping cibuild_ci_rebase_repo"; return 0; }
-
-  local remote_url
-  remote_url=$(echo "${CI_PROJECT_URL}" | sed "s|https://|https://gitlab-ci-token:${CIBUILD_CI_TOKEN}@|")
-
-  git config --global user.email "cibuild@ci.gitlab"
-  git config --global user.name  "cibuild"
-  git config --global safe.directory '*'
-
-  git remote set-url origin "${remote_url}" 2>/dev/null || true
-
-  git checkout -B "$BRANCH" \
-  --track "origin/$BRANCH" 2>/dev/null \
-  || git checkout -B "$BRANCH" "origin/$BRANCH"
-
-  local i=1
-  while [ $i -le 5 ]; do
-    if git pull --rebase; then
-      break
+    if [ -z "${CI_PROJECT_URL:-}" ] || [ -z "${CIBUILD_CI_TOKEN:-}" ]; then
+        cibuild_log_err "cibuild_ci_rebase_repo: CI_PROJECT_URL or CIBUILD_CI_TOKEN not set"
+        return 1
     fi
-    git rebase --abort 2>/dev/null || true
-    if [ $i -eq 5 ]; then
-      cibuild_log_error "rebase failed after 5 attempts"
-      return 1
-    fi
-    cibuild_log_info "pull failed, retrying ($i/5)..."
-    sleep $((i * 2))
-    i=$((i + 1))
-  done
 
-  cibuild_log_info "repo rebased"
+    local BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}}"
+
+    if [ -z "$BRANCH" ]; then
+        cibuild_log_err "no branch context, skipping cibuild_ci_rebase_repo"
+        return 0
+    fi
+
+    local remote_url
+    remote_url=$(printf '%s' "$CI_PROJECT_URL" | \
+        sed "s|https://|https://gitlab-ci-token:${CIBUILD_CI_TOKEN}@|")
+
+    git config --global user.email "cibuild@ci.gitlab"
+    git config --global user.name "cibuild"
+    git config --global --add safe.directory "$PWD"
+
+    if ! git remote set-url origin "$remote_url"; then
+        cibuild_log_err "failed to update origin remote"
+        return 1
+    fi
+
+    cibuild_log_info "fetching latest origin"
+
+    if ! git fetch --prune --tags origin; then
+        cibuild_log_err "git fetch failed"
+        return 1
+    fi
+
+    if ! git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+        cibuild_log_err "remote branch '$BRANCH' not found"
+        return 1
+    fi
+
+    #
+    # Remove colliding local branches.
+    #
+    # Example:
+    #
+    #   renovate
+    #   renovate/group
+    #   renovate/group/foo
+    #
+    # when checking out
+    #
+    #   renovate/group/foo/bar
+    #
+    local prefix=""
+    local remainder="$BRANCH"
+
+    while [ "$remainder" != "${remainder#*/}" ]; do
+        local part="${remainder%%/*}"
+
+        if [ -z "$prefix" ]; then
+            prefix="$part"
+        else
+            prefix="$prefix/$part"
+        fi
+
+        if git show-ref --verify --quiet "refs/heads/$prefix"; then
+            cibuild_log_info "removing colliding local branch '$prefix'"
+            git branch -D "$prefix" || true
+        fi
+
+        remainder="${remainder#*/}"
+    done
+
+    if ! git checkout -B "$BRANCH" --track "origin/$BRANCH" 2>/dev/null; then
+        if ! git checkout -B "$BRANCH" "origin/$BRANCH"; then
+            cibuild_log_err "failed to checkout '$BRANCH'"
+            return 1
+        fi
+    fi
+
+    if ! git symbolic-ref -q HEAD >/dev/null; then
+        cibuild_log_err "HEAD is detached"
+        return 1
+    fi
+
+    local i=1
+
+    while [ "$i" -le 5 ]; do
+
+        cibuild_log_info "rebasing '$BRANCH' onto origin/$BRANCH"
+
+        if ! git fetch --prune --tags origin; then
+            cibuild_log_err "git fetch failed"
+            return 1
+        fi
+
+        if git rebase "origin/$BRANCH"; then
+            cibuild_log_info "repo rebased"
+            return 0
+        fi
+
+        git rebase --abort 2>/dev/null || true
+        git reset --hard "origin/$BRANCH" >/dev/null 2>&1 || true
+
+        if [ "$i" -eq 5 ]; then
+            cibuild_log_err "rebase failed after 5 attempts"
+            return 1
+        fi
+
+        cibuild_log_info "rebase failed, retrying ($i/5)..."
+
+        sleep $((i * 2))
+
+        i=$((i + 1))
+    done
 }
 
 # Commit artifact-lock.<platform>.json back to the branch.
 # Uses [skip ci] to prevent pipeline loop.
-# Requires CIBUILD_CI_TOKEN with write_repository scope and git configured.
+# Requires CIBUILD_CI_TOKEN with write_repository scope.
 cibuild_ci_commit_lock_file() {
-  local lock_file="$1"
-  local skip_ci=" [skip ci]"
-  [ "$(cibuild_env_get 'skip_ci_on_commit_artifact_lock_file')" = "1" ] || skip_ci=""
+    local lock_file="$1"
+    local skip_ci=" [skip ci]"
 
-  cibuild_log_debug "skip_ci suffix: ${skip_ci}"
+    [ "$(cibuild_env_get 'skip_ci_on_commit_artifact_lock_file')" = "1" ] || skip_ci=""
 
-  if [ ! -f "${lock_file}" ]; then
-    cibuild_log_err "cibuild_ci_commit_lock_file: ${lock_file} not found"
-    return 1
-  fi
-
-  BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}}"
-  [ -z "$BRANCH" ] && { cibuild_log_err "no branch context, skipping cibuild_ci_commit_lock_file"; return 0; }
-  
-  git checkout -B "$BRANCH" \
-    --track "origin/$BRANCH" 2>/dev/null \
-    || git checkout -B "$BRANCH" "origin/$BRANCH"
-
-  git add "${lock_file}"
-
-  if git diff --cached --quiet; then
-    cibuild_log_info "artifact-lock unchanged, no commit needed: ${lock_file}"
-    return 0
-  fi
-
-  git commit -m "chore(lock): update ${lock_file}${skip_ci}"
-
-  local i=1
-  while [ $i -le 5 ]; do
-    if git pull --rebase; then
-      git add "${lock_file}"
-      git push && break
+    if [ ! -f "$lock_file" ]; then
+        cibuild_log_err "lock file not found: $lock_file"
+        return 1
     fi
-    git rebase --abort 2>/dev/null || true
-    if [ $i -eq 5 ]; then
-      cibuild_log_error "artifact-lock push failed after 5 attempts: ${lock_file}"
-      return 1
-    fi
-    cibuild_log_info "push failed, retrying ($i/5)..."
-    sleep $((i * 2))
-    i=$((i + 1))
-  done
 
-  cibuild_log_info "artifact-lock committed and pushed: ${lock_file}"
+    local BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}}"
+
+    if [ -z "$BRANCH" ]; then
+        cibuild_log_err "no branch context"
+        return 0
+    fi
+
+    cibuild_log_info "fetching latest origin"
+
+    if ! git fetch --prune --tags origin; then
+        cibuild_log_err "git fetch failed"
+        return 1
+    fi
+
+    if ! git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+        cibuild_log_err "remote branch '$BRANCH' not found"
+        return 1
+    fi
+
+    if ! git checkout -B "$BRANCH" --track "origin/$BRANCH" 2>/dev/null; then
+        if ! git checkout -B "$BRANCH" "origin/$BRANCH"; then
+            cibuild_log_err "failed to checkout '$BRANCH'"
+            return 1
+        fi
+    fi
+
+    git add "$lock_file"
+
+    if git diff --cached --quiet; then
+        cibuild_log_info "artifact-lock unchanged: $lock_file"
+        return 0
+    fi
+
+    if ! git commit -m "chore(lock): update ${lock_file}${skip_ci}"; then
+        cibuild_log_err "git commit failed"
+        return 1
+    fi
+
+    local i=1
+
+    while [ "$i" -le 5 ]; do
+
+        if git push origin "$BRANCH"; then
+            cibuild_log_info "artifact-lock committed and pushed: $lock_file"
+            return 0
+        fi
+
+        if [ "$i" -eq 5 ]; then
+            cibuild_log_err "artifact-lock push failed after 5 attempts: $lock_file"
+            return 1
+        fi
+
+        cibuild_log_info "push rejected, fetching and rebasing ($i/5)..."
+
+        if ! git fetch --prune --tags origin; then
+            cibuild_log_err "git fetch failed"
+            return 1
+        fi
+
+        if ! git rebase "origin/$BRANCH"; then
+            git rebase --abort 2>/dev/null || true
+            cibuild_log_err "rebase failed"
+            return 1
+        fi
+
+        sleep $((i * 2))
+
+        i=$((i + 1))
+    done
 }
 
 cibuild__ci_init
