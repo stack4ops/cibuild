@@ -335,7 +335,12 @@ cibuild_ci_rebase_repo() {
         return 1
     fi
 
-    local BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}}"
+    local BRANCH
+    if [ "${CI_PIPELINE_SOURCE:-}" = "merge_request_event" ]; then
+        BRANCH="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}"
+    else
+        BRANCH="${CI_COMMIT_BRANCH:-}"
+    fi
 
     if [ -z "$BRANCH" ]; then
         cibuild_log_err "no branch context, skipping cibuild_ci_rebase_repo"
@@ -458,7 +463,12 @@ cibuild_ci_commit_lock_file() {
         return 1
     fi
 
-    local BRANCH="${CI_COMMIT_BRANCH:-${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}}"
+    local BRANCH
+    if [ "${CI_PIPELINE_SOURCE:-}" = "merge_request_event" ]; then
+      BRANCH="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-}"
+    else
+      BRANCH="${CI_COMMIT_BRANCH:-}"
+    fi
 
     if [ -z "$BRANCH" ]; then
         cibuild_log_err "no branch context"
