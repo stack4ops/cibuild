@@ -679,7 +679,8 @@ cibuild_ci_lock_get() {
 
     if [ ! -f "$lock_file" ]; then
         cibuild_log_info "cibuild_ci_lock_get: lock not cached locally, pulling from registry"
-        cibuild_ci_pull_lock_artifact "$platform_name" > /dev/null || return 1
+        cibuild_ci_pull_lock_artifact "${platform_name}"
+        # > /dev/null || return 1
     fi
 
     if [ ! -f "$lock_file" ]; then
