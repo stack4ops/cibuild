@@ -688,7 +688,7 @@ cibuild_ci_lock_get() {
       cibuild_log_err "cibuild_ci_lock_get: lock file still not found after pull: ${lock_file}"
       return 1
   fi
-  cat "$lock_file"
+  #cat "$lock_file"
   jq -r ".${field} // empty" "$lock_file"
 }
 
