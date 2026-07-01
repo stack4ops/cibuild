@@ -177,7 +177,7 @@ cibuild_ci_target_image_full() {
 }
 
 cibuild_ci_lock() {
-  printf '%s\n' "$(cibuild_ci_target_registry)/$(cibuild_ci_target_image_full)-lock-$(cibuild_ci_commit)"
+  printf '%s\n' "$(cibuild_ci_target_image_full)-lock-$(cibuild_ci_commit)"
 }
 
 # release image data
