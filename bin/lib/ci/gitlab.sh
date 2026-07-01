@@ -609,7 +609,7 @@ cibuild_ci_pull_lock_artifact() {
 
     cibuild_log_info "pulling artifact-lock from ${lock_ref}"
 
-    if ! regctl artifact get  "$lock_ref" > "$out_file"; then
+    if ! regctl artifact get "$lock_ref" > "$out_file"; then
         cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref}"
         return 1
     fi
@@ -678,10 +678,6 @@ cibuild_ci_lock_get() {
     local lock_file="/tmp/artifact-lock.${platform_name}.json"
 
     if [ ! -f "$lock_file" ]; then
-        if [ -z "$image_ref" ] || [ -z "$build_tag" ]; then
-            cibuild_log_err "cibuild_ci_lock_get: lock file not found locally and image_ref/build_tag not provided for pull: ${lock_file}"
-            return 1
-        fi
         cibuild_log_info "cibuild_ci_lock_get: lock not cached locally, pulling from registry"
         cibuild_ci_pull_lock_artifact "$platform_name" > /dev/null || return 1
     fi
