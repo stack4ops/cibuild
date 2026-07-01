@@ -148,7 +148,7 @@ cibuild__release_create_index() {
 
   for platform in $platforms; do
     platform_name=$(echo "$platform" | tr '/' '-')
-    lock_digest=$(cibuild_lock_get "${platform_name}" "image_digest") || continue
+    lock_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest") || continue
     # use digest reference — independent of tag state
     image_ref="${target_image}@${lock_digest}"
     if regctl -v error manifest head "${image_ref}" >/dev/null 2>&1; then
@@ -183,7 +183,7 @@ cibuild__release_create_index() {
     esac
     platform_name=$(echo "${platform}" | tr '/' '-')
     local attestation_digest image_digest
-    image_digest=$(cibuild_lock_get "${platform_name}" "image_digest")
+    image_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest")
     attestation_digest=$(cibuild__get_docker_attestation_digest "${target_image}" "${image_digest}")
     if ! regctl -v error index add "${target_image}:${idx_tag}" \
       --ref "${target_image}@${attestation_digest}" \

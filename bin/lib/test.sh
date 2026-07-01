@@ -401,7 +401,7 @@ assert_response() {
         platform_name=$(cibuild_core_get_platform_name) \
         lock_digest
   
-  lock_digest=$(cibuild_lock_get "${platform_name}" "image_digest")
+  lock_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest")
 
   _test_id=$((1000 + RANDOM % 9999))
   _test_image="${target_image}@${lock_digest}"
@@ -444,7 +444,7 @@ assert_log() {
         platform_name=$(cibuild_core_get_platform_name) \
         lock_digest
   
-  lock_digest=$(cibuild_lock_get "${platform_name}" "image_digest")
+  lock_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest")
 
   _test_id=$((1000 + RANDOM % 9999))
   _test_image="${target_image}@${lock_digest}"

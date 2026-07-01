@@ -42,7 +42,7 @@ cibuild__build_get_sig_digest() {
   printf '%s\n' "${sig_digest:-}"
 }
 
-# Write artifact-lock.<platform_name>.json and commit via CI adapter.
+# Write artifact-lock.<platform_name>.json and push as oci artefact via CI adapter.
 cibuild__build_write_artifact_lock() {
   local platform="$1" \
         platform_name="$2" \
@@ -54,7 +54,7 @@ cibuild__build_write_artifact_lock() {
         provenance_digest="${8:-}" \
         build_client="$9"
 
-  local lock_file="artifact-lock.${platform_name}.json"
+  local lock_file="/tmp/artifact-lock.${platform_name}.json"
   local source_commit
   source_commit=$(cibuild_ci_commit)
 
@@ -71,6 +71,7 @@ cibuild__build_write_artifact_lock() {
     --arg source_commit   "${source_commit}" \
     --arg built_at        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     '{
+      schemaVersion: 1,
       platform:      $platform,
       platform_name: $platform_name,
       image:         $image,
@@ -88,11 +89,12 @@ cibuild__build_write_artifact_lock() {
 
   cibuild_log_info "artifact-lock written: ${lock_file}"
 
-  if cibuild_function_exists cibuild_ci_commit_lock_file; then
-    cibuild_ci_commit_lock_file "${lock_file}" || \
-      cibuild_main_err "artifact-lock commit failed (fatal)"
+  if cibuild_function_exists cibuild_ci_push_lock_artifact; then
+    cibuild_ci_push_lock_artifact \
+        "${platform_name}" || \
+        cibuild_main_err "artifact-lock push failed (fatal)"
   else
-    cibuild_log_info "cibuild_ci_commit_lock_file not implemented for this adapter — skipping commit"
+      cibuild_log_info "cibuild_ci_push_lock_artifact not implemented for this adapter — skipping"
   fi
 }
 

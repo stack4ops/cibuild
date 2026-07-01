@@ -553,24 +553,6 @@ cibuild_sign() {
 }
 
 # =============================================================================
-# ARTIFACT LOCK — read per-platform lock files written by the build job
-# =============================================================================
-
-# Read a field from artifact-lock.<platform_name>.json
-# Usage: cibuild__release_lock_get <platform_name> <field>
-cibuild_lock_get() {
-  local platform_name="$1" \
-        field="$2" \
-        lock_file="artifact-lock.${1}.json"
-
-  if [ ! -f "${lock_file}" ]; then
-    cibuild_log_err "artifact-lock not found: ${lock_file}"
-    return 1
-  fi
-  jq -r ".${field} // empty" "${lock_file}"
-}
-
-# =============================================================================
 # COSIGN — shared verify (used by build and release run)
 #
 # Usage: cibuild_verify \
@@ -640,7 +622,7 @@ cibuild_verify_all_platforms() {
     cibuild_cosign_prepare_pubkey
     for platform in $platforms; do
       platform_name=$(echo "$platform" | tr '/' '-')
-      lock_digest=$(cibuild_lock_get "${platform_name}" "image_digest") || continue
+      lock_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest") || continue
       # use digest reference — independent of tag state
       image_ref="${target_image}@${lock_digest}"
       if ! cibuild_verify "${image_ref}" \
