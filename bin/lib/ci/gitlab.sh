@@ -619,6 +619,7 @@ cibuild_ci_pull_lock_artifact() {
         return 1
     fi
     cibuild_log_info "artifact-lock pulled: ${out_file}"
+    cat "${out_file}"
 }
 
 # Condense artifact-lock files from the OCI registry back into VCS.
@@ -673,22 +674,22 @@ cibuild_ci_condense_lock_artifacts() {
 # Pulls from OCI registry if not already present locally.
 # Usage: cibuild_ci_lock_get <platform_name> <field>
 cibuild_ci_lock_get() {
-    local platform_name="$1"
-    local field="$2"
-    local lock_file="/tmp/artifact-lock.${platform_name}.json"
+  local platform_name="$1"
+  local field="$2"
+  local lock_file="/tmp/artifact-lock.${platform_name}.json"
 
-    if [ ! -f "$lock_file" ]; then
-        cibuild_log_info "cibuild_ci_lock_get: lock not cached locally, pulling from registry"
-        cibuild_ci_pull_lock_artifact "${platform_name}"
-        # > /dev/null || return 1
-    fi
+  if [ ! -f "$lock_file" ]; then
+      cibuild_log_info "cibuild_ci_lock_get: lock not cached locally, pulling from registry"
+      cibuild_ci_pull_lock_artifact "${platform_name}"
+      # > /dev/null || return 1
+  fi
 
-    if [ ! -f "$lock_file" ]; then
-        cibuild_log_err "cibuild_ci_lock_get: lock file still not found after pull: ${lock_file}"
-        return 1
-    fi
-    cat "$lock_file"
-    jq -r ".${field} // empty" "$lock_file"
+  if [ ! -f "$lock_file" ]; then
+      cibuild_log_err "cibuild_ci_lock_get: lock file still not found after pull: ${lock_file}"
+      return 1
+  fi
+  cat "$lock_file"
+  jq -r ".${field} // empty" "$lock_file"
 }
 
 cibuild__ci_init
