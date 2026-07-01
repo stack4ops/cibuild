@@ -650,7 +650,7 @@ cibuild_ci_condense_lock_artifacts() {
 cibuild_ci_lock_get() {
   local platform_name="$1"
   local field="$2"
-  local lock_file="/tmp/artifact-lockss.${platform_name}.json"
+  local lock_file="/tmp/artifact-lock.${platform_name}.json"
   jq -r ".${field} // empty" "$lock_file" || cibuild_main_err "failed to get value ${field} for platform ${platform_name}"
 }
 
