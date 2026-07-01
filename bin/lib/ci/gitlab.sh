@@ -586,7 +586,8 @@ cibuild_ci_push_lock_artifact() {
   cibuild_log_info "pushing artifact-lock to ${lock_ref}"
 
   if ! regctl artifact put \
-          --media-type "application/vnd.cibuild.artifact-lock+json" \
+          --artifact-type "application/vnd.cibuild.artifact-lock+json" \
+          --file-media-type "application/json" \
           --annotation "org.cibuild.commit=${_CIBUILD_CI_COMMIT}" \
           --annotation "org.cibuild.pipeline-id=${CI_PIPELINE_ID:-}" \
           --file "$lock_file" \
@@ -608,10 +609,7 @@ cibuild_ci_pull_lock_artifact() {
 
     cibuild_log_info "pulling artifact-lock from ${lock_ref}"
 
-    if ! regctl artifact get \
-            --media-type "application/vnd.cibuild.artifact-lock+json" \
-            --output "$out_file" \
-            "$lock_ref"; then
+    if ! regctl artifact get  "$lock_ref" > "$out_file"; then
         cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref}"
         return 1
     fi
