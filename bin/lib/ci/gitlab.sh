@@ -578,22 +578,22 @@ cibuild_ci_push_lock_artifact() {
 #
 # Usage: lock_file=$(cibuild_ci_pull_lock_artifact <platform-name>)
 cibuild_ci_pull_lock_artifact() {
-    local platform_name="$1"
-    local out_file="/tmp/artifact-lock.${platform_name}.json"
-    local lock_ref="$(cibuild_ci_lock)-${platform_name}"
+  local platform_name="$1"
+  local out_file="/tmp/artifact-lock.${platform_name}.json"
+  local lock_ref="$(cibuild_ci_lock)-${platform_name}"
 
-    cibuild_log_info "pulling artifact-lock from ${lock_ref}"
+  cibuild_log_info "pulling artifact-lock from ${lock_ref}"
 
-    if ! regctl artifact get "$lock_ref" > "$out_file"; then
-        cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref}"
-        return 1
-    fi
+  if ! regctl artifact get "$lock_ref" > "$out_file"; then
+      cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref}"
+      return 1
+  fi
 
-    if [ ! -s "$out_file" ]; then
-        cibuild_log_err "cibuild_ci_pull_lock_artifact: pulled file is empty: ${out_file}"
-        return 1
-    fi
-    cibuild_log_info "artifact-lock pulled: ${out_file}"
+  if [ ! -s "$out_file" ]; then
+      cibuild_log_err "cibuild_ci_pull_lock_artifact: pulled file is empty: ${out_file}"
+      return 1
+  fi
+  cibuild_log_info "artifact-lock pulled: ${out_file}"
 }
 
 # Condense artifact-lock files from the OCI registry back into VCS.
@@ -609,39 +609,39 @@ cibuild_ci_pull_lock_artifact() {
 #
 #   platform-names  space-separated list, e.g. "linux-amd64 linux-arm64"
 cibuild_ci_condense_lock_artifacts() {
-    local platforms="$*"
+  local platforms="$*"
 
-    if [ -z "$platforms" ]; then
-        cibuild_log_err "cibuild_ci_condense_lock_artifacts: no platform names given"
-        return 1
-    fi
+  if [ -z "$platforms" ]; then
+      cibuild_log_err "cibuild_ci_condense_lock_artifacts: no platform names given"
+      return 1
+  fi
 
-    if ! cibuild_function_exists cibuild_ci_commit_lock_file; then
-        cibuild_log_err "cibuild_ci_condense_lock_artifacts: cibuild_ci_commit_lock_file not available in this adapter"
-        return 1
-    fi
+  if ! cibuild_function_exists cibuild_ci_commit_lock_file; then
+      cibuild_log_err "cibuild_ci_condense_lock_artifacts: cibuild_ci_commit_lock_file not available in this adapter"
+      return 1
+  fi
 
-    local failed=0
-    for platform_name in $platforms; do
-        local out_file
-        out_file=$(cibuild_ci_pull_lock_artifact "$platform_name") || {
-            cibuild_log_err "cibuild_ci_condense_lock_artifacts: failed to pull lock for ${platform_name}"
-            failed=1
-            continue
-        }
+  local failed=0
+  for platform_name in $platforms; do
+      local out_file
+      out_file=$(cibuild_ci_pull_lock_artifact "$platform_name") || {
+          cibuild_log_err "cibuild_ci_condense_lock_artifacts: failed to pull lock for ${platform_name}"
+          failed=1
+          continue
+      }
 
-        cibuild_ci_commit_lock_file "$out_file" || {
-            cibuild_log_err "cibuild_ci_condense_lock_artifacts: failed to commit lock for ${platform_name}"
-            failed=1
-        }
-    done
+      cibuild_ci_commit_lock_file "$out_file" || {
+          cibuild_log_err "cibuild_ci_condense_lock_artifacts: failed to commit lock for ${platform_name}"
+          failed=1
+      }
+  done
 
-    if [ "$failed" -ne 0 ]; then
-        cibuild_log_err "cibuild_ci_condense_lock_artifacts: one or more platforms failed"
-        return 1
-    fi
+  if [ "$failed" -ne 0 ]; then
+      cibuild_log_err "cibuild_ci_condense_lock_artifacts: one or more platforms failed"
+      return 1
+  fi
 
-    cibuild_log_info "cibuild_ci_condense_lock_artifacts: all locks condensed into VCS"
+  cibuild_log_info "cibuild_ci_condense_lock_artifacts: all locks condensed into VCS"
 }
 
 # Read a field from artifact-lock.<platform_name>.json.
@@ -655,8 +655,7 @@ cibuild_ci_lock_get() {
 }
 
 cibuild__ci_lock_available() {
-  local platform_name="$1"
-  return regctl -v error manifest head "$(cibuild_ci_lock)-${platform_name}" >/dev/null 2>&1
+  regctl -v error manifest head "$(cibuild_ci_lock)-${1}" >/dev/null 2>&1
 }
 
 cibuild__ci_init() {
@@ -688,6 +687,7 @@ cibuild__ci_init() {
   
   local build_platforms=$(cibuild_env_get 'build_platforms')
   local build_native=$(cibuild_env_get 'build_native')
+  local platforms=""
   
   if [ "${build_native}" = "1" ]; then
     platforms=$(cibuild_core_get_platform_arch)
