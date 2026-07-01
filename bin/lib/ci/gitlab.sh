@@ -650,8 +650,8 @@ cibuild_ci_condense_lock_artifacts() {
 cibuild_ci_lock_get() {
   local platform_name="$1"
   local field="$2"
-  local lock_file="/tmp/artifact-lock.${platform_name}.json"
-  jq -r ".${field} // empty" "$lock_file"
+  local lock_file="/tmp/artifact-lockss.${platform_name}.json"
+  jq -r ".${field} // empty" "$lock_file" || cibuild_main_err "failed to get value ${field} for platform ${platform_name}"
 }
 
 cibuild__ci_lock_available() {
@@ -680,15 +680,12 @@ cibuild__ci_init() {
      _CIBUILD_DATE_TIME=$(date +%F_%H-%M-%S)
   fi
 
-  # deprecated?
-  # cibuild_ci_rebase_repo
-
   # check artifact-lock files
   
   local build_platforms=$(cibuild_env_get 'build_platforms')
   local build_native=$(cibuild_env_get 'build_native')
   local platforms=""
-  
+
   if [ "${build_native}" = "1" ]; then
     platforms=$(cibuild_core_get_platform_arch)
   else
