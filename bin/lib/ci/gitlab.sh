@@ -304,31 +304,6 @@ cibuild_ci_upload_supply_chain_artifacts() {
   cibuild_log_info "supply chain artifacts upload done"
 }
 
-cibuild__ci_init() {
-
-  cibuild_log_info "init ci: $(cibuild_ci_type)"
-
-  _CIBUILD_CI_COMMIT="${CI_COMMIT_SHA:-}"
-
-  if [ "${CI_PIPELINE_SOURCE:-}" = "merge_request_event" ]; then
-    _CIBUILD_CI_REF="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}"
-  else
-    _CIBUILD_CI_REF="${CI_COMMIT_REF_NAME:-}"
-  fi
-  
-  cibuild_log_info "_CIBUILD_CI_REF=${_CIBUILD_CI_REF}"
-
-  if [ -z "$_CIBUILD_DATE" ]; then
-    _CIBUILD_DATE=$(date +%F)
-  fi
-
-  if [ -z "$_CIBUILD_DATE_TIME" ]; then
-     _CIBUILD_DATE_TIME=$(date +%F_%H-%M-%S)
-  fi
-
-  cibuild_ci_rebase_repo
-}
-
 # rebase from previous job commits
 cibuild_ci_rebase_repo() {
     if [ -z "${CI_PROJECT_URL:-}" ] || [ -z "${CIBUILD_CI_TOKEN:-}" ]; then
@@ -619,7 +594,6 @@ cibuild_ci_pull_lock_artifact() {
         return 1
     fi
     cibuild_log_info "artifact-lock pulled: ${out_file}"
-    cat "${out_file}"
 }
 
 # Condense artifact-lock files from the OCI registry back into VCS.
@@ -677,19 +651,58 @@ cibuild_ci_lock_get() {
   local platform_name="$1"
   local field="$2"
   local lock_file="/tmp/artifact-lock.${platform_name}.json"
-
-  if [ ! -f "$lock_file" ]; then
-      cibuild_log_info "cibuild_ci_lock_get: lock not cached locally, pulling from registry"
-      cibuild_ci_pull_lock_artifact "${platform_name}"
-      # > /dev/null || return 1
-  fi
-
-  if [ ! -f "$lock_file" ]; then
-      cibuild_log_err "cibuild_ci_lock_get: lock file still not found after pull: ${lock_file}"
-      return 1
-  fi
-  #cat "$lock_file"
   jq -r ".${field} // empty" "$lock_file"
+}
+
+cibuild__ci_lock_available() {
+  local platform_name="$1"
+  return regctl -v error manifest head "$(cibuild_ci_lock)-${platform_name}" >/dev/null 2>&1
+}
+
+cibuild__ci_init() {
+
+  cibuild_log_info "init ci: $(cibuild_ci_type)"
+
+  _CIBUILD_CI_COMMIT="${CI_COMMIT_SHA:-}"
+
+  if [ "${CI_PIPELINE_SOURCE:-}" = "merge_request_event" ]; then
+    _CIBUILD_CI_REF="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}"
+  else
+    _CIBUILD_CI_REF="${CI_COMMIT_REF_NAME:-}"
+  fi
+  
+  cibuild_log_info "_CIBUILD_CI_REF=${_CIBUILD_CI_REF}"
+
+  if [ -z "$_CIBUILD_DATE" ]; then
+    _CIBUILD_DATE=$(date +%F)
+  fi
+
+  if [ -z "$_CIBUILD_DATE_TIME" ]; then
+     _CIBUILD_DATE_TIME=$(date +%F_%H-%M-%S)
+  fi
+
+  # deprecated?
+  # cibuild_ci_rebase_repo
+
+  # check artifact-lock files
+  
+  local build_platforms=$(cibuild_env_get 'build_platforms')
+  local build_native=$(cibuild_env_get 'build_native')
+  
+  if [ "${build_native}" = "1" ]; then
+    platforms=$(cibuild_core_get_platform_arch)
+  else
+    platforms=$(echo "${build_platforms}" | tr ',' ' ')
+  fi
+
+  for platform in ${platforms}; do
+    platform_name=$(echo "${platform}" | tr '/' '-')
+    if ! cibuild__ci_lock_available "${platform_name}"; then
+      cibuild_log_info "artifact-lock for ${platform_name} not available"
+    else
+      cibuild_ci_pull_lock_artifact "${platform_name}"
+    fi
+  done
 }
 
 cibuild__ci_init
