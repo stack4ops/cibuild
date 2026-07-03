@@ -132,6 +132,9 @@ cibuild_ci_default_cache_mode() {
   printf '%s\n' 'tag'
 }
 
+cibuild_ci_default_lock_mode() {
+  printf '%s\n' 'tag'
+}
 # base registry, image path and tag: are processed from Dockerfile
 
 # target image data
@@ -177,7 +180,13 @@ cibuild_ci_target_image_full() {
 }
 
 cibuild_ci_lock() {
-  printf '%s\n' "$(cibuild_ci_target_image_full)-lock-$(cibuild_ci_commit)"
+  local _build_lock_mode=$(cibuild_env_get 'build_lock_mode')
+  local build_lock_mode=${_build_lock_mode:-$(cibuild_ci_default_lock_mode)}
+  case "$build_lock_mode" in
+    repo) printf '%s\n' "$(cibuild_ci_target_image)-lock:$(cibuild_ci_build_tag)-$(cibuild_ci_commit)" ;;
+    tag)  printf '%s\n' "$(cibuild_ci_target_image):lock-$(cibuild_ci_build_tag)-$(cibuild_ci_commit)" ;;
+    *)    cibuild_log_err "unsupported build_lock_mode $build_lock_mode"; exit 1 ;;
+  esac
 }
 
 # release image data

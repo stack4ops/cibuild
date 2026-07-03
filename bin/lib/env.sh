@@ -26,6 +26,7 @@ build_platforms=linux/amd64,linux/arm64
 build_native=0
 build_opts=
 build_args=
+build_lock_mode=
 build_use_cache=1
 build_cache_mode=
 build_export_cache=
