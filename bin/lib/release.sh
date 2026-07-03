@@ -396,17 +396,12 @@ cibuild__release_clean_tags() {
 # =============================================================================
 
 cibuild_release_run() {
-  local release_enabled=$(cibuild_env_get 'release_enabled') \
-        signature=$(cibuild_env_get 'release_cosign_signature') \
-        local build_client=$(cibuild_env_get 'build_client')
+  local release_enabled=$(cibuild_env_get 'release_enabled')
+  local build_client=$(cibuild_env_get 'build_client')
 
   if [ "${release_enabled:?}" != "1" ]; then
     cibuild_log_info "release run not enabled: skipped"
     return
-  fi
-
-  if [ "${signature:-1}" = "1" ]; then
-    cibuild_check_signing_env
   fi
 
   if ! cibuild_core_run_script release pre; then

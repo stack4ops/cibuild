@@ -947,16 +947,11 @@ EOF
 
 cibuild_build_run() {
   local build_enabled=$(cibuild_env_get 'build_enabled') \
-        build_client=$(cibuild_env_get 'build_client') \
-        signature=$(cibuild_env_get 'build_cosign_signature')
+        build_client=$(cibuild_env_get 'build_client')
         
   if [ "${build_enabled:?}" != "1" ]; then
     cibuild_log_info "build run skipped"
     return
-  fi
-
-  if [ "${signature:-1}" = "1" ]; then
-    cibuild_check_signing_env
   fi
 
   if ! cibuild_core_run_script build pre; then

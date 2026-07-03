@@ -681,8 +681,11 @@ cibuild_cosign_prepare_privkey() {
 }
 
 cibuild_check_signing_env() {
-  cibuild_cosign_prepare_privkey
-  cibuild_cosign_prepare_pubkey
+  local signature=$(cibuild_env_get 'build_cosign_signature')
+  if [ "${signature:-1}" = "1" ]; then
+    cibuild_cosign_prepare_privkey
+    cibuild_cosign_prepare_pubkey
+  fi
 }
 
 cibuild_base_init() {
@@ -714,6 +717,8 @@ cibuild_core_init() {
   # create auth files
   cibuild__core_create_docker_auth_config
   cibuild__core_create_regctl_auth_config
-  # lock init
+  # early check of signing env
+  cibuild_check_signing_env
+  # artifact-lock init
   cibuild_function_exists "cibuild_ci_lock_init" && cibuild_ci_lock_init
 }
