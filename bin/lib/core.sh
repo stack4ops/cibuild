@@ -713,5 +713,7 @@ cibuild_core_init() {
   cibuild_log_debug "target image: $(cibuild_ci_target_image_full)"
   # create auth files
   cibuild__core_create_docker_auth_config
-  cibuild__core_create_regctl_auth_config 
+  cibuild__core_create_regctl_auth_config
+  # lock init
+  cibuild_function_exists "cibuild_ci_lock_init" && cibuild_ci_lock_init
 }

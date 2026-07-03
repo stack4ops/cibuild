@@ -667,28 +667,7 @@ cibuild__ci_lock_available() {
   regctl -v error manifest head "$(cibuild_ci_lock)-${1}" >/dev/null 2>&1
 }
 
-cibuild__ci_init() {
-
-  cibuild_log_info "init ci: $(cibuild_ci_type)"
-
-  _CIBUILD_CI_COMMIT="${CI_COMMIT_SHA:-}"
-
-  if [ "${CI_PIPELINE_SOURCE:-}" = "merge_request_event" ]; then
-    _CIBUILD_CI_REF="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}"
-  else
-    _CIBUILD_CI_REF="${CI_COMMIT_REF_NAME:-}"
-  fi
-  
-  cibuild_log_info "_CIBUILD_CI_REF=${_CIBUILD_CI_REF}"
-
-  if [ -z "$_CIBUILD_DATE" ]; then
-    _CIBUILD_DATE=$(date +%F)
-  fi
-
-  if [ -z "$_CIBUILD_DATE_TIME" ]; then
-     _CIBUILD_DATE_TIME=$(date +%F_%H-%M-%S)
-  fi
-
+cibuild_ci_lock_init() {
   # check artifact-lock files
   
   local build_platforms=$(cibuild_env_get 'build_platforms')
@@ -712,6 +691,30 @@ cibuild__ci_init() {
       cibuild_ci_pull_lock_artifact "${platform_name}"
     fi
   done
+}
+
+cibuild__ci_init() {
+
+  cibuild_log_info "init ci: $(cibuild_ci_type)"
+
+  _CIBUILD_CI_COMMIT="${CI_COMMIT_SHA:-}"
+
+  if [ "${CI_PIPELINE_SOURCE:-}" = "merge_request_event" ]; then
+    _CIBUILD_CI_REF="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}"
+  else
+    _CIBUILD_CI_REF="${CI_COMMIT_REF_NAME:-}"
+  fi
+  
+  cibuild_log_info "_CIBUILD_CI_REF=${_CIBUILD_CI_REF}"
+
+  if [ -z "$_CIBUILD_DATE" ]; then
+    _CIBUILD_DATE=$(date +%F)
+  fi
+
+  if [ -z "$_CIBUILD_DATE_TIME" ]; then
+     _CIBUILD_DATE_TIME=$(date +%F_%H-%M-%S)
+  fi
+
 }
 
 cibuild__ci_init
