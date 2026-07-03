@@ -192,16 +192,16 @@ cibuild__test_detect_kubernetes() {
 
 # ---------- ASSERT RESPONSE ----------
 cibuild__test_assert_response_docker() {
+
   local assert="$1" \
         entrypoint="$3" \
         uri="$4" \
         data_raw="$5" \
         test_run_timeout=$(cibuild_env_get 'test_run_timeout')
-  
-  # global
+
   _target_port="$2"
-  
-  shift 3
+
+  shift 5   # assert port entrypoint uri data_raw
   
   cibuild_log_debug $_target_port
   cibuild_log_debug $assert
@@ -257,7 +257,7 @@ cibuild__test_assert_response_kubernetes() {
   # global
   _target_port="$2"
   
-  shift 3
+  shift 5   # assert port entrypoint uri data_raw
   
   cibuild_log_debug $_target_port
   cibuild_log_debug $assert
