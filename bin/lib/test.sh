@@ -206,7 +206,7 @@ cibuild__test_assert_response_docker() {
   cibuild_log_debug $_target_port
   cibuild_log_debug $assert
 
-  if [ -n "$@" ]; then
+  if [ "$#" -gt 0 ]; then
     cibuild__test_run_docker "$entrypoint" "$@"
   else
     cibuild__test_run_docker "$entrypoint"
