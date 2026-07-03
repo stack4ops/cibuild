@@ -694,6 +694,9 @@ cibuild__ci_init() {
   local build_platforms=$(cibuild_env_get 'build_platforms')
   local build_native=$(cibuild_env_get 'build_native')
   local platforms=""
+  
+  local build_lock_mode=$(cibuild_env_get 'build_lock_mode')
+  cibuild_log_info "build_lock_mode: ${build_lock_mode}"
 
   if [ "${build_native}" = "1" ]; then
     platforms=$(cibuild_core_get_platform_arch)
