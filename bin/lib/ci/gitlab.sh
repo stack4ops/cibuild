@@ -704,7 +704,7 @@ cibuild__ci_init() {
   for platform in ${platforms}; do
     platform_name=$(echo "${platform}" | tr '/' '-')
     if ! cibuild__ci_lock_available "${platform_name}"; then
-      cibuild_log_info "artifact-lock for ${platform_name} not available"
+      cibuild_log_info "artifact-lock for ${platform_name} not available: $(cibuild_ci_lock)-${platform_name}"
     else
       cibuild_ci_pull_lock_artifact "${platform_name}"
     fi
