@@ -587,10 +587,22 @@ cibuild_ci_push_lock_artifact() {
 #
 # Usage: lock_file=$(cibuild_ci_pull_lock_artifact <platform-name>)
 cibuild_ci_pull_lock_artifact() {
-  local platform_name="$1"
-  local out_file="/tmp/artifact-lock.${platform_name}.json"
-  local lock_ref="$(cibuild_ci_lock)-${platform_name}"
+  local platform_name="$1" \
+        out_file="/tmp/artifact-lock.${platform_name}.json" \
+        lock_ref="$(cibuild_ci_lock)-${platform_name}" \
+        signing_mode=$(cibuild_env_get 'build_cosign_signing_mode') \
+        new_bundle_format=$(cibuild_env_get 'build_cosign_new_bundle_format') \
+        verify=$(cibuild_env_get 'build_cosign_verify')
 
+  if [ "${verify:-1}" = "1" ]; then
+    cibuild_log_info "verifying artifact-lock ${lock_ref}"
+    if ! cibuild_verify "${lock_ref}" \
+                 "${signing_mode}" \
+                 "${new_bundle_format}"; then
+      cibuild_main_err "cibuild_verify failed: ${lock_ref}"
+    fi
+  fi
+  
   cibuild_log_info "pulling artifact-lock from ${lock_ref}"
 
   if ! regctl artifact get "$lock_ref" > "$out_file"; then
