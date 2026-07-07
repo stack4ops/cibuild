@@ -262,7 +262,7 @@ cibuild__test_assert_response_kubernetes() {
   cibuild_log_debug $_target_port
   cibuild_log_debug $assert
 
-  if [ -n "$@" ]; then
+  if [ "$#" -gt 0 ]; then
     cibuild__test_run_kubernetes "$entrypoint" "$@"
   else
     cibuild__test_run_kubernetes "$entrypoint"
@@ -546,11 +546,16 @@ cibuild__test_image() {
         cmd_json=$(printf '%s\n' "$item" | jq -c '.cmd // []')
 
         set --
+        # only build up positional params if cmd actually has elements —
+        # an empty jq '.[]' output still yields one blank heredoc line,
+        # which would otherwise be read as a single empty-string argument
+        if [ "$(printf '%s\n' "$cmd_json" | jq 'length')" -gt 0 ]; then
           while IFS= read -r arg; do
             set -- "$@" "$arg"
           done <<EOF
 $(printf '%s\n' "$cmd_json" | jq -r '.[]')
 EOF
+        fi
 
       case "$type" in
         log)
