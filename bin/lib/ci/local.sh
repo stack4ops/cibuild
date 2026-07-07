@@ -173,6 +173,10 @@ cibuild_ci_default_cache_mode() {
   printf '%s\n' 'repo'
 }
 
+cibuild_ci_default_lock_mode() {
+  printf '%s\n' 'tag'
+}
+
 cibuild_ci_target_image_path() {
   printf '%s\n' "${CIBUILD_TARGET_IMAGE_PATH:-$(cibuild__get_project_path)}"
 }
@@ -187,6 +191,16 @@ cibuild_ci_target_image() {
 
 cibuild_ci_target_image_full() {
   printf '%s\n' "$(cibuild_ci_target_registry)/$(cibuild_ci_target_image_path):$(cibuild_ci_build_tag)"
+}
+
+cibuild_ci_lock() {
+  local _build_lock_mode=$(cibuild_env_get 'build_lock_mode')
+  local build_lock_mode=${_build_lock_mode:-$(cibuild_ci_default_lock_mode)}
+  case "$build_lock_mode" in
+    repo) printf '%s\n' "$(cibuild_ci_target_image)-lock:$(cibuild_ci_build_tag)-$(cibuild_ci_commit)" ;;
+    tag)  printf '%s\n' "$(cibuild_ci_target_image):lock-$(cibuild_ci_build_tag)-$(cibuild_ci_commit)" ;;
+    *)    cibuild_log_err "unsupported build_lock_mode $build_lock_mode"; exit 1 ;;
+  esac
 }
 
 # release image data
@@ -269,6 +283,179 @@ cibuild_ci_cleanup_tag() {
   if regctl -v error tag rm "${image}:${tag}" 2>/dev/null; then
     cibuild_log_info "deleted ${image}:${tag}"
   fi
+}
+
+# ---------------------------------------------------------------------------
+# artifact-lock OCI transport layer
+#
+# The artifact-lock.<platform>.json files are internal build coordination
+# artefacts produced by each platform job and consumed by downstream jobs
+# (verification, release, multi-arch index assembly). They are NOT image
+# attestations (SBOM / provenance / vuln) and must not be mixed with those.
+#
+# Transport: OCI registry tags in the same image repository, using the
+# naming scheme:
+#
+#   <image-repo>:<build-tag>-lock-<local-pid>-<platform-name>
+#
+# There is no pipeline concept in the local adapter, so a local process id
+# is used instead of a pipeline-id purely for informational uniqueness in
+# the annotation — the tag itself is already scoped by commit and platform.
+#
+# This keeps lock artefacts co-located with the images they describe,
+# avoids a separate repository namespace, and lets the existing GC / keep /
+# export machinery handle retention.
+#
+# Condensation into VCS is a no-op in the local adapter — see
+# cibuild_ci_commit_lock_file below.
+# ---------------------------------------------------------------------------
+
+# Push an artifact-lock file to the OCI registry as a plain JSON blob.
+#
+# Usage: cibuild_ci_push_lock_artifact <platform-name>
+#   platform-name e.g. linux-amd64
+cibuild_ci_push_lock_artifact() {
+  local platform_name="$1"
+  local lock_file="/tmp/artifact-lock.${platform_name}.json"
+
+  if [ ! -f "$lock_file" ]; then
+      cibuild_log_err "cibuild_ci_push_lock_artifact: lock file not found: $lock_file"
+      return 1
+  fi
+
+  local lock_ref="$(cibuild_ci_lock)-${platform_name}"
+  cibuild_log_info "pushing artifact-lock to ${lock_ref}"
+
+  if ! regctl artifact put \
+          --artifact-type "application/vnd.cibuild.artifact-lock+json" \
+          --file-media-type "application/json" \
+          --annotation "org.cibuild.commit=${_CIBUILD_CI_COMMIT}" \
+          --annotation "org.cibuild.pipeline-id=local-$$" \
+          --file "$lock_file" \
+          "$lock_ref"; then
+      cibuild_log_err "cibuild_ci_push_lock_artifact: regctl artifact put failed for ${lock_ref}"
+      return 1
+  fi
+
+  cibuild_log_info "artifact-lock pushed: ${lock_ref}"
+}
+
+# Pull an artifact-lock file from the OCI registry into /tmp.
+#
+# Usage: lock_file=$(cibuild_ci_pull_lock_artifact <platform-name>)
+cibuild_ci_pull_lock_artifact() {
+  local platform_name="$1" \
+        out_file="/tmp/artifact-lock.${platform_name}.json" \
+        lock_ref="$(cibuild_ci_lock)-${platform_name}" \
+        signing_mode=$(cibuild_env_get 'build_cosign_signing_mode') \
+        new_bundle_format=$(cibuild_env_get 'build_cosign_new_bundle_format') \
+        verify=$(cibuild_env_get 'build_cosign_verify')
+
+  if [ "${verify:-1}" = "1" ]; then
+    cibuild_log_info "verifying artifact-lock ${lock_ref}"
+    if ! cibuild_verify "${lock_ref}" \
+                 "${signing_mode}" \
+                 "${new_bundle_format}"; then
+      cibuild_main_err "cibuild_verify failed: ${lock_ref}"
+    fi
+  fi
+  
+  cibuild_log_info "pulling artifact-lock from ${lock_ref}"
+
+  if ! regctl artifact get "$lock_ref" > "$out_file"; then
+      cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref}"
+      return 1
+  fi
+
+  if [ ! -s "$out_file" ]; then
+      cibuild_log_err "cibuild_ci_pull_lock_artifact: pulled file is empty: ${out_file}"
+      return 1
+  fi
+  cibuild_log_info "artifact-lock pulled: ${out_file}"
+}
+
+# Condense artifact-lock files from the OCI registry back into VCS.
+# In the local adapter this ends up calling the no-op
+# cibuild_ci_commit_lock_file below — provided for interface parity with
+# the other adapters, e.g. when a script uses this unconditionally.
+#
+# Usage: cibuild_ci_condense_lock_artifacts <platform-names...>
+#
+#   platform-names  space-separated list, e.g. "linux-amd64 linux-arm64"
+cibuild_ci_condense_lock_artifacts() {
+  local platforms="$*"
+
+  if [ -z "$platforms" ]; then
+      cibuild_log_err "cibuild_ci_condense_lock_artifacts: no platform names given"
+      return 1
+  fi
+
+  if ! cibuild_function_exists cibuild_ci_commit_lock_file; then
+      cibuild_log_err "cibuild_ci_condense_lock_artifacts: cibuild_ci_commit_lock_file not available in this adapter"
+      return 1
+  fi
+
+  local failed=0
+  for platform_name in $platforms; do
+      local out_file
+      out_file=$(cibuild_ci_pull_lock_artifact "$platform_name") || {
+          cibuild_log_err "cibuild_ci_condense_lock_artifacts: failed to pull lock for ${platform_name}"
+          failed=1
+          continue
+      }
+
+      cibuild_ci_commit_lock_file "$out_file" || {
+          cibuild_log_err "cibuild_ci_condense_lock_artifacts: failed to commit lock for ${platform_name}"
+          failed=1
+      }
+  done
+
+  if [ "$failed" -ne 0 ]; then
+      cibuild_log_err "cibuild_ci_condense_lock_artifacts: one or more platforms failed"
+      return 1
+  fi
+
+  cibuild_log_info "cibuild_ci_condense_lock_artifacts: all locks condensed into VCS"
+}
+
+# Read a field from artifact-lock.<platform_name>.json.
+# Pulls from OCI registry if not already present locally.
+# Usage: cibuild_ci_lock_get <platform_name> <field>
+cibuild_ci_lock_get() {
+  local platform_name="$1"
+  local field="$2"
+  local lock_file="/tmp/artifact-lock.${platform_name}.json"
+  jq -r ".${field} // empty" "$lock_file" || cibuild_main_err "failed to get value ${field} for platform ${platform_name}"
+}
+
+cibuild__ci_lock_available() {
+  regctl -v error manifest head "$(cibuild_ci_lock)-${1}" >/dev/null 2>&1
+}
+
+cibuild_ci_lock_init() {
+  # check artifact-lock files
+  
+  local build_platforms=$(cibuild_env_get 'build_platforms')
+  local build_native=$(cibuild_env_get 'build_native')
+  local platforms=""
+  
+  local build_lock_mode=$(cibuild_env_get 'build_lock_mode')
+  cibuild_log_info "build_lock_mode: ${build_lock_mode}"
+
+  if [ "${build_native}" = "1" ]; then
+    platforms=$(cibuild_core_get_platform_arch)
+  else
+    platforms=$(echo "${build_platforms}" | tr ',' ' ')
+  fi
+
+  for platform in ${platforms}; do
+    platform_name=$(echo "${platform}" | tr '/' '-')
+    if ! cibuild__ci_lock_available "${platform_name}"; then
+      cibuild_log_info "artifact-lock for ${platform_name} not available: $(cibuild_ci_lock)-${platform_name}"
+    else
+      cibuild_ci_pull_lock_artifact "${platform_name}"
+    fi
+  done
 }
 
 cibuild__ci_init() {
