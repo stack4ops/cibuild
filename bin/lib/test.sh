@@ -403,7 +403,7 @@ assert_response() {
   
   lock_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest")
 
-  _test_id=$((1000 + RANDOM % 9999))
+  _test_id=$((1000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 9000))
   _test_image="${target_image}@${lock_digest}"
   _container="testrun-${_test_id}"
   _pod="testrun-${_test_id}"
@@ -446,7 +446,7 @@ assert_log() {
   
   lock_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest")
 
-  _test_id=$((1000 + RANDOM % 9999))
+  _test_id=$((1000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 9000))
   _test_image="${target_image}@${lock_digest}"
   _container="testrun-${_test_id}"
   _pod="testrun-${_test_id}"
