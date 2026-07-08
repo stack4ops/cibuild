@@ -179,12 +179,22 @@ cibuild_ci_target_image_full() {
   printf '%s\n' "$(cibuild_ci_target_registry)/$(cibuild_ci_target_image_path):$(cibuild_ci_build_tag)"
 }
 
-cibuild_ci_lock() {
+cibuild_ci_lock_commit() {
   local _build_lock_mode=$(cibuild_env_get 'build_lock_mode')
   local build_lock_mode=${_build_lock_mode:-$(cibuild_ci_default_lock_mode)}
   case "$build_lock_mode" in
     repo) printf '%s\n' "$(cibuild_ci_target_image)-lock:$(cibuild_ci_build_tag)-$(cibuild_ci_commit)" ;;
     tag)  printf '%s\n' "$(cibuild_ci_target_image):lock-$(cibuild_ci_build_tag)-$(cibuild_ci_commit)" ;;
+    *)    cibuild_log_err "unsupported build_lock_mode $build_lock_mode"; exit 1 ;;
+  esac
+}
+
+cibuild_ci_lock_latest() {
+  local _build_lock_mode=$(cibuild_env_get 'build_lock_mode')
+  local build_lock_mode=${_build_lock_mode:-$(cibuild_ci_default_lock_mode)}
+  case "$build_lock_mode" in
+    repo) printf '%s\n' "$(cibuild_ci_target_image)-lock:$(cibuild_ci_build_tag)-latest" ;;
+    tag)  printf '%s\n' "$(cibuild_ci_target_image):lock-$(cibuild_ci_build_tag)-latest" ;;
     *)    cibuild_log_err "unsupported build_lock_mode $build_lock_mode"; exit 1 ;;
   esac
 }
@@ -411,8 +421,8 @@ cibuild_ci_push_lock_artifact() {
     cibuild_log_err "cibuild_ci_push_lock_artifact: lock file not found: $lock_file"
     return 1
   fi
-  local lock_ref="$(cibuild_ci_lock)-${platform_name}"
-  local latest_ref="$(cibuild_ci_lock)-${platform_name}-latest"
+  local lock_ref="$(cibuild_ci_lock_commit)-${platform_name}"
+  local latest_ref="$(cibuild_ci_lock_latest)-${platform_name}"
 
   cibuild_log_info "pushing artifact-lock to ${lock_ref}"
   local digest
@@ -444,7 +454,8 @@ cibuild_ci_push_lock_artifact() {
 cibuild_ci_pull_lock_artifact() {
   local platform_name="$1" \
         out_file="/tmp/artifact-lock.${platform_name}.json" \
-        lock_ref="$(cibuild_ci_lock)-${platform_name}" \
+        lock_ref="$(cibuild_ci_lock_commit)-${platform_name}" \
+        latest_ref="$(cibuild_ci_lock_latest)-${platform_name}" \
         signing_mode=$(cibuild_env_get 'build_cosign_signing_mode') \
         new_bundle_format=$(cibuild_env_get 'build_cosign_new_bundle_format') \
         verify=$(cibuild_env_get 'build_cosign_verify')
@@ -461,7 +472,11 @@ cibuild_ci_pull_lock_artifact() {
   cibuild_log_info "pulling artifact-lock from ${lock_ref}"
 
   if ! regctl artifact get "$lock_ref" > "$out_file"; then
-      cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref}"
+      cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref} trying to get latest lock..."
+  fi
+
+  if ! regctl artifact get "$latest_ref" > "$out_file"; then
+      cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${latest_ref}"
       return 1
   fi
 
@@ -531,7 +546,7 @@ cibuild_ci_lock_get() {
 }
 
 cibuild__ci_lock_available() {
-  regctl -v error manifest head "$(cibuild_ci_lock)-${1}" >/dev/null 2>&1
+  regctl -v error manifest head "$(cibuild_ci_lock_commit)-${1}" || regctl -v error manifest head "$(cibuild_ci_latest_commit)-${1}" >/dev/null 2>&1
 }
 
 cibuild_ci_lock_init() {
@@ -553,7 +568,7 @@ cibuild_ci_lock_init() {
   for platform in ${platforms}; do
     platform_name=$(echo "${platform}" | tr '/' '-')
     if ! cibuild__ci_lock_available "${platform_name}"; then
-      cibuild_log_info "artifact-lock for ${platform_name} not available: $(cibuild_ci_lock)-${platform_name}"
+      cibuild_log_info "artifact-lock for ${platform_name} not available: $(cibuild_ci_lock_commit)-${platform_name}"
     else
       cibuild_ci_pull_lock_artifact "${platform_name}"
     fi
