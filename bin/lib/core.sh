@@ -605,38 +605,6 @@ cibuild_verify() {
   cibuild_log_info "verified: ${image_ref}"
 }
 
-cibuild_verify_all_platforms() {
-  local target_image=$(cibuild_ci_target_image) \
-        build_platforms=$(cibuild_env_get 'build_platforms') \
-        build_cosign_signature=$(cibuild_env_get 'build_cosign_signature') \
-        build_cosign_signing_mode=$(cibuild_env_get 'build_cosign_signing_mode') \
-        build_cosign_new_bundle_format=$(cibuild_env_get 'build_cosign_new_bundle_format')
-
-  local platforms lock_digest="" image_ref=""
-  platforms=$(echo "$build_platforms" | tr ',' ' ')
-  
-  # --- verify all platform images
-  if [ "${build_cosign_signature:-1}" = "1" ]; then
-    # --- verify platform digests ---
-    cibuild_log_info "verifying platform signatures from artifact-lock files"
-    cibuild_cosign_prepare_pubkey
-    for platform in $platforms; do
-      platform_name=$(echo "$platform" | tr '/' '-')
-      lock_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest") || continue
-      # use digest reference — independent of tag state
-      image_ref="${target_image}@${lock_digest}"
-      if ! cibuild_verify "${image_ref}" \
-                "${build_cosign_signing_mode}" \
-                "${build_cosign_new_bundle_format}"; then
-        cibuild_main_err "cibuild_verify failed: ${image_ref}"
-      fi
-    done
-    cibuild_log_info "all platform signatures verified"
-  else
-    cibuild_info "platform images are not signed, nothing to do"
-  fi
-}
-
 # =============================================================================
 # COSIGN — shared public key preparation (used by build and release run)
 #

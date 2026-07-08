@@ -129,13 +129,7 @@ cibuild__release_create_index() {
         new_bundle_format=$(cibuild_env_get 'release_cosign_new_bundle_format') \
         annotations_path="${CIBUILD_LIB_PATH}/cosign_release_annotations.sh" \
         signing_recursive=$(cibuild_env_get 'release_cosign_signing_recursive') \
-        verify$(cibuild_env_get 'release_cosign_verify') \
-        release_cosign_verify_build_artifacts=$(cibuild_env_get 'release_cosign_verify_build_artifacts')
-    
-  # --- verify all platform images
-  if [ "${release_cosign_verify_build_artifacts:-1}" = "1" ]; then
-    cibuild_verify_all_platforms
-  fi
+        verify=$(cibuild_env_get 'release_cosign_verify')
 
   # --- build index from lock file digests ---
   local create_args="" \
