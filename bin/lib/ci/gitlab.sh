@@ -407,27 +407,35 @@ cibuild_ci_commit_lock_file() {
 cibuild_ci_push_lock_artifact() {
   local platform_name="$1"
   local lock_file="/tmp/artifact-lock.${platform_name}.json"
-
   if [ ! -f "$lock_file" ]; then
-      cibuild_log_err "cibuild_ci_push_lock_artifact: lock file not found: $lock_file"
-      return 1
+    cibuild_log_err "cibuild_ci_push_lock_artifact: lock file not found: $lock_file"
+    return 1
   fi
-
   local lock_ref="$(cibuild_ci_lock)-${platform_name}"
+  local latest_ref="$(cibuild_ci_lock)-${platform_name}-latest"
+
   cibuild_log_info "pushing artifact-lock to ${lock_ref}"
-
-  if ! regctl artifact put \
-          --artifact-type "application/vnd.cibuild.artifact-lock+json" \
-          --file-media-type "application/json" \
-          --annotation "org.cibuild.commit=${_CIBUILD_CI_COMMIT}" \
-          --annotation "org.cibuild.pipeline-id=${CI_PIPELINE_ID:-}" \
-          --file "$lock_file" \
-          "$lock_ref"; then
-      cibuild_log_err "cibuild_ci_push_lock_artifact: regctl artifact put failed for ${lock_ref}"
-      return 1
+  local digest
+  digest="$(regctl artifact put \
+    --artifact-type "application/vnd.cibuild.artifact-lock+json" \
+    --file-media-type "application/json" \
+    --annotation "org.cibuild.commit=${_CIBUILD_CI_COMMIT}" \
+    --annotation "org.cibuild.pipeline-id=${CI_PIPELINE_ID:-}" \
+    --file "$lock_file" \
+    --format '{{ .Manifest.GetDescriptor.Digest }}' \
+    "$lock_ref")"
+  if [ -z "$digest" ]; then
+    cibuild_log_err "cibuild_ci_push_lock_artifact: regctl artifact put failed for ${lock_ref}"
+    return 1
   fi
+  cibuild_log_info "artifact-lock pushed: ${lock_ref} (${digest})"
 
-  cibuild_log_info "artifact-lock pushed: ${lock_ref}"
+  cibuild_log_info "tagging latest: ${latest_ref}"
+  if ! regctl image copy "${lock_ref%:*}@${digest}" "$latest_ref"; then
+    cibuild_log_err "cibuild_ci_push_lock_artifact: failed to tag latest for ${latest_ref}"
+    return 1
+  fi
+  cibuild_log_info "artifact-lock latest updated: ${latest_ref}"
 }
 
 # Pull an artifact-lock file from the OCI registry into /tmp.
