@@ -374,12 +374,12 @@ cibuild__build_post_platform() {
     "${provenance_digest}" \
     "${build_client}"
   
-  local lock_ref="$(cibuild_ci_lock)-${platform_name}"
+  local lock_ref="$(cibuild_ci_lock_commit)-${platform_name}"
 
   if [ "${signature:-1}" = "1" ]; then
-    cibuild_log_info "signing artifact-lock $(cibuild_ci_lock)-${lock_ref}"
+    cibuild_log_info "signing artifact-lock ${lock_ref}"
   
-    if ! cibuild_sign  "${lock_ref}" \
+    if ! cibuild_sign "${lock_ref}" \
                 "${signing_mode}" \
                 "${signing_config}" \
                 "${new_bundle_format}" \
