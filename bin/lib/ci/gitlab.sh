@@ -465,7 +465,12 @@ cibuild_ci_pull_lock_artifact() {
     if ! cibuild_verify "${lock_ref}" \
                  "${signing_mode}" \
                  "${new_bundle_format}"; then
-      cibuild_main_err "cibuild_verify failed: ${lock_ref}"
+      cibuild_log_err "cibuild_verify failed: ${lock_ref} try latest..."
+    fi
+    if ! cibuild_verify "${latest_ref}" \
+                 "${signing_mode}" \
+                 "${new_bundle_format}"; then
+      cibuild_main_err "cibuild_verify failed: ${latest_ref}"
     fi
   fi
   
