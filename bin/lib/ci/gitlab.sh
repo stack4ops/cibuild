@@ -567,6 +567,7 @@ cibuild__ci_lock_latest_available() {
 cibuild_ci_lock_init() {
   # check artifact-lock files
   
+  local mandatory=${1:-0}
   local build_platforms=$(cibuild_env_get 'build_platforms')
   local build_native=$(cibuild_env_get 'build_native')
   local platforms=""
@@ -585,7 +586,11 @@ cibuild_ci_lock_init() {
     if cibuild__ci_lock_commit_available "${platform_name}" || cibuild__ci_lock_latest_available "${platform_name}"; then
       cibuild_ci_pull_lock_artifact "${platform_name}"
     else
-      cibuild_log_info "no artifact lock available"
+      cibuild_log_info "no artifact lock available for ${platform_name}"
+      # for test and release runs an artifact lock is mandatory
+      if [ "${mandatory}" = "1" ]; then
+        cibuild_main_err "artifact locks are mandatory for this run, exit..."
+      fi
     fi
   done
 }

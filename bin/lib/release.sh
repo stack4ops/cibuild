@@ -403,7 +403,7 @@ cibuild_release_run() {
   fi
 
   # artifact-lock init
-  cibuild_function_exists "cibuild_ci_lock_init" && cibuild_ci_lock_init
+  cibuild_function_exists "cibuild_ci_lock_init" && cibuild_ci_lock_init 1
   
   cibuild__release_create_index
 

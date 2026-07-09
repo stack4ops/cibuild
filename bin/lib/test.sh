@@ -584,7 +584,7 @@ cibuild_test_run() {
   fi
 
   # artifact-lock init
-  cibuild_function_exists "cibuild_ci_lock_init" && cibuild_ci_lock_init
+  cibuild_function_exists "cibuild_ci_lock_init" && cibuild_ci_lock_init 1
   
   local test_script_file_path="$(pwd)/${test_script_file}"
   if [ ! -f "$test_script_file_path" ]; then
