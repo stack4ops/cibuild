@@ -462,14 +462,22 @@ cibuild_ci_pull_lock_artifact() {
 
   if [ "${verify:-1}" = "1" ]; then
     cibuild_log_info "verifying artifact-lock ${lock_ref}"
-    if ! cibuild_verify "${lock_ref}" \
+    if cibuild__ci_lock_commit_available "${platform_name}"; then
+      if ! cibuild_verify "${lock_ref}" \
                  "${signing_mode}" \
                  "${new_bundle_format}"; then
-      cibuild_log_info "cibuild_verify failed: ${lock_ref} try latest..."
-      if ! cibuild_verify "${latest_ref}" \
+        cibuild_main_err "cibuild_verify failed: ${lock_ref}"
+      fi
+    else
+      if cibuild__ci_lock_latest_available "${platform_name}"; then
+        cibuild_log_info "verifying artifact-lock ${latest_ref}"
+        if ! cibuild_verify "${latest_ref}" \
                  "${signing_mode}" \
                  "${new_bundle_format}"; then
-        cibuild_main_err "cibuild_verify failed: ${latest_ref}"
+          cibuild_main_err "cibuild_verify failed: ${latest_ref}"
+        fi
+      else
+        cibuild_main_err "cibuild_verify failed: ${lock_ref} and ${latest_ref}"
       fi
     fi
   fi
@@ -550,8 +558,12 @@ cibuild_ci_lock_get() {
   jq -r ".${field} // empty" "$lock_file" || cibuild_main_err "failed to get value ${field} for platform ${platform_name}"
 }
 
-cibuild__ci_lock_available() {
-  regctl -v error manifest head "$(cibuild_ci_lock_commit)-${1}" || regctl -v error manifest head "$(cibuild_ci_lock_latest)-${1}" >/dev/null 2>&1
+cibuild__ci_lock_commit_available() {
+  regctl -v error manifest head "$(cibuild_ci_lock_commit)-${1}" >/dev/null 2>&1
+}
+
+cibuild__ci_lock_latest_available() {
+  regctl -v error manifest head "$(cibuild_ci_lock_latest)-${1}" >/dev/null 2>&1
 }
 
 cibuild_ci_lock_init() {
@@ -572,10 +584,10 @@ cibuild_ci_lock_init() {
 
   for platform in ${platforms}; do
     platform_name=$(echo "${platform}" | tr '/' '-')
-    if ! cibuild__ci_lock_available "${platform_name}"; then
-      cibuild_log_info "artifact-lock for ${platform_name} not available: $(cibuild_ci_lock_commit)-${platform_name}"
-    else
+    if cibuild__ci_lock_commit_available "${platform_name}" || cibuild__ci_lock_latest_available "${platform_name}"; then
       cibuild_ci_pull_lock_artifact "${platform_name}"
+    else
+      cibuild_log_info "no artifact lock available"
     fi
   done
 }
