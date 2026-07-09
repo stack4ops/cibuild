@@ -949,6 +949,9 @@ cibuild_build_run() {
     exit 1
   fi
 
+  # artifact-lock init
+  cibuild_function_exists "cibuild_ci_lock_init" && cibuild_ci_lock_init
+  
   case "${build_client}" in
     buildx)
       if ! cibuild__build_detect_docker; then

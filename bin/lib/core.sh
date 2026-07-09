@@ -687,6 +687,4 @@ cibuild_core_init() {
   cibuild__core_create_regctl_auth_config
   # early check of signing env
   cibuild_check_signing_env
-  # artifact-lock init
-  cibuild_function_exists "cibuild_ci_lock_init" && cibuild_ci_lock_init
 }
