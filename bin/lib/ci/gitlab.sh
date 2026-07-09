@@ -460,37 +460,34 @@ cibuild_ci_pull_lock_artifact() {
         new_bundle_format=$(cibuild_env_get 'build_cosign_new_bundle_format') \
         verify=$(cibuild_env_get 'build_cosign_verify')
 
-  if [ "${verify:-1}" = "1" ]; then
-    cibuild_log_info "verifying artifact-lock ${lock_ref}"
-    if cibuild__ci_lock_commit_available "${platform_name}"; then
+  if cibuild__ci_lock_commit_available "${platform_name}"; then
+    if [ "${verify:-1}" = "1" ]; then
+      cibuild_log_info "verifying artifact-lock ${lock_ref}"
       if ! cibuild_verify "${lock_ref}" \
-                 "${signing_mode}" \
-                 "${new_bundle_format}"; then
-        cibuild_main_err "cibuild_verify failed: ${lock_ref}"
+          "${signing_mode}" \
+          "${new_bundle_format}"; then
+          cibuild_main_err "cibuild_verify failed: ${lock_ref}"
       fi
-    else
-      if cibuild__ci_lock_latest_available "${platform_name}"; then
-        cibuild_log_info "verifying artifact-lock ${latest_ref}"
-        if ! cibuild_verify "${latest_ref}" \
-                 "${signing_mode}" \
-                 "${new_bundle_format}"; then
-          cibuild_main_err "cibuild_verify failed: ${latest_ref}"
-        fi
-      else
-        cibuild_main_err "cibuild_verify failed: ${lock_ref} and ${latest_ref}"
+      cibuild_log_info "pulling artifact-lock from ${lock_ref}"
+      if ! regctl artifact get "$lock_ref" > "$out_file"; then
+        cibuild_log_info "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref} trying to get latest lock..."
       fi
     fi
-  fi
-  
-  cibuild_log_info "pulling artifact-lock from ${lock_ref}"
-
-  if ! regctl artifact get "$lock_ref" > "$out_file"; then
-      cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref} trying to get latest lock..."
-  fi
-
-  if ! regctl artifact get "$latest_ref" > "$out_file"; then
-      cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${latest_ref}"
-      return 1
+  else
+    if cibuild__ci_lock_latest_available "${platform_name}"; then
+      if [ "${verify:-1}" = "1" ]; then
+        cibuild_log_info "verifying artifact-lock ${latest_ref}"
+        if ! cibuild_verify "${latest_ref}" \
+            "${signing_mode}" \
+            "${new_bundle_format}"; then
+            cibuild_main_err "cibuild_verify failed: ${latest_ref}"
+        fi
+        cibuild_log_info "pulling artifact-lock from ${latest_ref}"
+        if ! regctl artifact get "$latest_ref" > "$out_file"; then
+          cibuild_log_info "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${latest_ref} trying to get latest lock..."
+        fi
+      fi
+    fi
   fi
 
   if [ ! -s "$out_file" ]; then
@@ -498,6 +495,7 @@ cibuild_ci_pull_lock_artifact() {
       return 1
   fi
   cibuild_log_info "artifact-lock pulled: ${out_file}"
+  
 }
 
 # Condense artifact-lock files from the OCI registry back into VCS.
