@@ -551,7 +551,7 @@ cibuild_ci_lock_get() {
 }
 
 cibuild__ci_lock_available() {
-  regctl -v error manifest head "$(cibuild_ci_lock_commit)-${1}" || regctl -v error manifest head "$(cibuild_ci_latest_commit)-${1}" >/dev/null 2>&1
+  regctl -v error manifest head "$(cibuild_ci_lock_commit)-${1}" || regctl -v error manifest head "$(cibuild_ci_lock_latest)-${1}" >/dev/null 2>&1
 }
 
 cibuild_ci_lock_init() {
