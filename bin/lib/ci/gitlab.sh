@@ -470,7 +470,7 @@ cibuild_ci_pull_lock_artifact() {
       fi
       cibuild_log_info "pulling artifact-lock from ${lock_ref}"
       if ! regctl artifact get "$lock_ref" > "$out_file"; then
-        cibuild_log_info "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref} trying to get latest lock..."
+        cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${lock_ref} trying to get latest lock..."
       fi
     fi
   else
@@ -484,7 +484,7 @@ cibuild_ci_pull_lock_artifact() {
         fi
         cibuild_log_info "pulling artifact-lock from ${latest_ref}"
         if ! regctl artifact get "$latest_ref" > "$out_file"; then
-          cibuild_log_info "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${latest_ref} trying to get latest lock..."
+          cibuild_log_err "cibuild_ci_pull_lock_artifact: regctl artifact get failed for ${latest_ref} trying to get latest lock..."
         fi
       fi
     fi
