@@ -96,8 +96,10 @@ cibuild hält jeden Integrationspunkt — die CI-Plattform, die Build-Engine, di
 
 Nach jedem Plattform-Build schreibt cibuild eine Datei
 `artifact-lock.<platform_name>.json` (z. B. `artifact-lock.linux-amd64.json`)
-in das Repository-Root und committet sie über den CI-Adapter zurück in den
-Branch.
+und pusht sie als signiertes OCI-Artefakt in die Registry — co-lokalisiert mit
+dem Image, das sie beschreibt, nach dem Tag-Schema
+`<image>:lock-<build-tag>-<commit-sha>-<platform>` (commit-spezifisch) und
+`<image>:lock-<build-tag>-latest` (aktuellster Build dieses Tags).
 
 Die Lock-Datei hält die exakten Digests des Plattform-Images und aller seiner
 Supply-Chain-Referrer fest — SBOM, Schwachstellenbericht und Provenance —
@@ -126,19 +128,19 @@ jedem Zeitpunkt nachweislich intakt.
 
 ### Verwendung über Runs hinweg
 
-**Test-Run** — bevor ein Test ausgeführt wird, liest der Test-Run den
-Plattform-Digest aus der Lock-Datei und verifiziert die cosign-Signatur dagegen.
-Tests laufen immer gegen genau den Digest, der gebaut und signiert wurde — nicht
-gegen einen Tag, der überschrieben worden sein könnte. Dies kann mit
-`CIBUILD_TEST_COSIGN_VERIFY_BUILD_ARTIFACTS=0` deaktiviert werden.
+**Test-Run** — bevor ein Test ausgeführt wird, lädt der Test-Run das
+Lock-Artefakt aus der Registry, verifiziert seine cosign-Signatur und liest den
+Plattform-Digest daraus. Tests laufen immer gegen genau den Digest, der gebaut
+und signiert wurde — nicht gegen einen Tag, der überschrieben worden sein
+könnte. Dies kann mit `CIBUILD_TEST_COSIGN_VERIFY_BUILD_ARTIFACTS=0`
+deaktiviert werden.
 
-**Release-Run** — der Release-Run liest die Plattform-Digests aus den
-Lock-Dateien, um den Multi-Plattform-Index zusammenzubauen, und verifiziert alle
-cosign-Signaturen erneut, bevor er fortfährt. Dies kann mit
-`CIBUILD_RELEASE_COSIGN_VERIFY_BUILD_ARTIFACTS=0` deaktiviert werden.
+**Release-Run** — der Release-Run lädt und verifiziert alle Plattform-Lock-
+Artefakte erneut, bevor er den Multi-Plattform-Index zusammenbaut. Dies kann
+mit `CIBUILD_RELEASE_COSIGN_VERIFY_BUILD_ARTIFACTS=0` deaktiviert werden.
 
 Beide Runs lösen das Image über den Digest auf — unabhängig vom Tag-Zustand in
-der Registry — sodass die gesamte Pipeline über Jobs hinweg
+der Registry — sodass die gesamte Pipeline über Jobs und Runner hinweg
 manipulationssicher nachweisbar ist.
 
 > Die architektonische Begründung hinter Artifact-Locks, kryptografischen Scopes
@@ -147,10 +149,14 @@ manipulationssicher nachweisbar ist.
 
 ### Compliance-Werkzeuge
 
-Die Lock-Datei ist eine einfache JSON-Datei, die ins Repository committet wird,
-wodurch alle Artefakt-Digests externen Werkzeugen ohne Registry-Zugang zur
-Verfügung stehen. Compliance-Pipelines und Audit-Werkzeuge können sie direkt
-konsumieren:
+Das Lock-Artefakt ist reines JSON und macht alle Artefakt-Digests externen
+Werkzeugen direkt über die Registry zugänglich. Compliance-Pipelines und
+Audit-Werkzeuge können das jeweils aktuelle Lock-Artefakt direkt abrufen:
+
+```sh
+# neuestes Lock-Artefakt für den main-Build-Tag, linux/amd64
+regctl artifact get registry.example.com/myorg/myapp:lock-main-latest-linux-amd64 | jq .
+```
 
 - **SBOM-Consumer** (OWASP Dependency-Track, DevGuard) — nutzen
   `referrers.sbom`, um die CycloneDX-SBOM per Digest aus der Registry abzurufen
@@ -161,43 +167,63 @@ konsumieren:
   `built_at`, um Image-Versionen mit Source-Commits und Scan-Ergebnissen zu
   korrelieren
 
-Lock-Dateien werden mit einer `[skip ci]`-Commit-Message committet, um keine
-neue Pipeline auszulösen. Im lokalen Adapter werden sie lokal committet, ohne
-Push.
+Lock-Artefakte werden im Build-Scope zusammen mit dem Image signiert — gleicher
+Schlüssel, gleicher Verifikationspfad. Kein separater Trust-Anchor erforderlich.
+
+Ein optionaler Kondensierungsschritt (`cibuild_ci_condense_lock_artifacts`) kann
+Lock-Dateien nach einem Merge ins VCS zurückspiegeln, für Workflows die
+Lock-Daten im Repository benötigen. Dieser Schritt ist explizit und vom
+Build-Pipeline-Fluss entkoppelt.
 
 ### Manuelle Verifikation und Auditing
 
-Da die Lock-Datei jeden Digest festhält und das Image signiert ist, kann jede
+Da das Lock-Artefakt jeden Digest festhält und selbst signiert ist, kann jede
 Person ein Artefakt von überall verifizieren und auditieren — ohne Zugang zur
-Pipeline, zum CI-System oder zu den Build-Logs. Es genügen die committete
-Lock-Datei, der öffentliche Schlüssel und Lesezugriff auf die Registry.
+Pipeline, zum CI-System oder zu den Build-Logs. Es genügen der öffentliche
+Schlüssel und Lesezugriff auf die Registry.
 
-**Signatur verifizieren.** Den Image-Digest aus der Lock-Datei lesen und gegen
-den öffentlichen Schlüssel verifizieren:
+**Lock-Artefakt abrufen und inspizieren.** Das commit-spezifische oder
+aktuelle Lock-Artefakt direkt aus der Registry holen:
 
 ```sh
-DIGEST=$(jq -r .image_digest artifact-lock.linux-amd64.json)
-cosign verify --key cosign.pub registry.example.com/myorg/myapp@"$DIGEST"
+# commit-spezifisch (exakter Build)
+regctl artifact get registry.example.com/myorg/myapp:lock-main-abc1234-linux-amd64 | jq .
+
+# latest (aktuellster Build dieses Tags)
+regctl artifact get registry.example.com/myorg/myapp:lock-main-latest-linux-amd64 | jq .
+```
+
+**Signatur des Lock-Artefakts verifizieren.**
+
+```sh
+LOCK_REF=registry.example.com/myorg/myapp:lock-main-latest-linux-amd64
+cosign verify --private-infrastructure --key cosign.pub "$LOCK_REF"
+```
+
+**Image-Signatur verifizieren.** Den Image-Digest aus dem Lock lesen und
+verifizieren:
+
+```sh
+DIGEST=$(regctl artifact get "$LOCK_REF" | jq -r .image_digest)
+cosign verify --private-infrastructure --key cosign.pub \
+  registry.example.com/myorg/myapp@"$DIGEST"
 ```
 
 Das Image wird über den Digest aufgelöst, nicht über einen Tag — die
 Verifikation hält also auch dann, wenn der Tag später verschoben oder entfernt
 wurde.
 
-**Attestierungen auditieren.** Jeder Referrer-Digest steht in der Lock-Datei.
-Beliebige davon direkt aus der Registry ziehen und inspizieren:
+**Attestierungen auditieren.** Jeder Referrer-Digest steht im Lock. Beliebige
+davon direkt aus der Registry ziehen und inspizieren:
 
 ```sh
-# CycloneDX SBOM
-SBOM=$(jq -r .referrers.sbom artifact-lock.linux-amd64.json)
+SBOM=$(regctl artifact get "$LOCK_REF" | jq -r .referrers.sbom)
 regctl artifact get registry.example.com/myorg/myapp@"$SBOM" | jq .
 
-# CVE-Schwachstellenbericht
-VULN=$(jq -r .referrers.vuln artifact-lock.linux-amd64.json)
+VULN=$(regctl artifact get "$LOCK_REF" | jq -r .referrers.vuln)
 regctl artifact get registry.example.com/myorg/myapp@"$VULN" | jq .
 
-# SLSA-Provenance
-PROV=$(jq -r .referrers.provenance artifact-lock.linux-amd64.json)
+PROV=$(regctl artifact get "$LOCK_REF" | jq -r .referrers.provenance)
 regctl artifact get registry.example.com/myorg/myapp@"$PROV" | jq .
 ```
 
@@ -219,9 +245,9 @@ Zeit, von jedem Ort aus unabhängig überprüfbar.
 cibuild hat fünf Runs, die einzeln oder alle zusammen aufgerufen werden können:
 
 | Run | cibuilder-Image | Beschreibung |
-|-----|-----------------|--------------|
+|-----|-----------------|--------------| 
 | `check` | `cibuilder:check` | Vergleicht die Layer des Basis-Images mit dem zuletzt gebauten Image. Bricht die Pipeline ab, wenn sich nichts geändert hat. Läuft nur bei geplanten oder manuell ausgelösten Pipelines. |
-| `build` | `cibuilder:build-buildctl` / `build-nix` / `build-kaniko` / `build-buildx` | Baut pro Plattform OCI-Images, erzeugt SBOM und CVE-Bericht als OCI-Referrer, signiert mit cosign und pusht alles in die Target-Registry. |
+| `build` | `cibuilder:build-buildctl` / `build-nix` / `build-kaniko` / `build-buildx` | Baut pro Plattform OCI-Images, erzeugt SBOM und CVE-Bericht als OCI-Referrer, signiert mit cosign, pusht alles in die Target-Registry und pusht das signierte Lock-Artefakt in die Registry. |
 | `test` | `cibuilder:test-docker` / `test-k8s` | Führt Test-Skript und/oder JSON-Assertions gegen das frisch gebaute Image aus. |
 | `release` | `cibuilder:release` | Baut einen sauberen Multi-Plattform-Index zusammen, erzeugt SBOM (SPDX + CycloneDX) aus dem bestehenden CycloneDX-Referrer, signiert mit cosign, kopiert zusätzliche Tags, spiegelt zu anderen Registries. |
 | `update-caches` | `cibuilder:update-caches` | Aktualisiert externe Caches (trivy-Schwachstellen-DB). Für geplante Pipelines gedacht — kein Build, kein Release. |
@@ -321,8 +347,9 @@ nicht erforderlich sind.
 Das Aufteilen ist sinnvoll, wenn:
 
 - **Native Multi-Plattform-Builds** — `CIBUILD_BUILD_NATIVE=1` erfordert einen
-  Runner pro Architektur. Jeder Runner führt seinen eigenen Build-Job aus; der
-  Release-Job baut den Index zusammen.
+  Runner pro Architektur. Jeder Runner führt seinen eigenen Build-Job aus und
+  pusht sein Lock-Artefakt in die Registry; der Release-Job lädt alle
+  Lock-Artefakte und baut den Index zusammen.
 - **Verschiedene Build-Backends** — z. B. `build-nix` auf einem Runner,
   `build-buildctl` auf einem anderen.
 - **Sichtbarkeit und Kontrolle** — getrennte Jobs erlauben es, einzelne Schritte

@@ -44,13 +44,20 @@ integrity and origin.
 ## The Artifact Lock File
 
 After each platform build, an `artifact-lock.<platform_name>.json` file is
-written to the repository root and committed back to the branch.
+written and pushed to the OCI registry as a signed artifact 
+(artifact-type "application/vnd.cibuild.artifact-lock+json"), co-located with
+the image it describes. Two tags are maintained per platform:
+
+- **`<image>:lock-<build-tag>-<commit-sha>-<platform>`** — immutable,
+  commit-specific reference to the exact build that produced this lock
+- **`<image>:lock-<build-tag>-latest-<platform>`** — mutable pointer to the
+  most recent build of this tag, updated after every successful push
 
 The lock file records the exact digests of the platform image and all its
 supply chain referrers — SBOM, vulnerability report, provenance — together
 with the signature digest and the source commit. Because the image is signed
 and the referrers are bound to its digest, the entire chain is provably intact
-whenever the lock file is read.
+whenever the lock artifact is read.
 
 ```json
 {
@@ -70,20 +77,10 @@ whenever the lock file is read.
 }
 ```
 
-### Why commit the lock file back to the repository
-
-Committing the lock file immediately after signing — before any downstream
-stage runs — has two effects.
-
-First, it forces every consumer to obtain the digest through the version
-control system rather than through an internal hand-off. A test stage that
-reads the digest from the committed lock file cannot be fed a different digest
-or substituted referrers between build and test. The lock file in the
-repository is the single source of truth.
-
-Second, it makes the artifact's integrity data available without registry
-access. The lock file is plain JSON in the repository — any external tool can
-consume the digests directly to fetch and verify attestations.
+An optional condensation step (`cibuild_ci_condense_lock_artifacts`) can
+mirror lock files back into the VCS after a merge, for workflows that require
+lock data in the repository. This step is explicit and decoupled from the
+build pipeline.
 
 ---
 
@@ -94,16 +91,16 @@ characteristics.
 
 ### Build scope — static key
 
-The build stage signs each platform image and its referrers with a static key
-pair. The private key is injected as a secret; the public key lives in the
-repository (e.g. `cosign.pub`) so that any consumer can verify. This scope is
-appropriate for internal infrastructure where a known key pair is managed by
-the organization.
+The build stage signs each platform image, its referrers, and its lock artifact
+with a static key pair. The private key is injected as a secret; the public key
+lives in the repository (e.g. `cosign.pub`) so that any consumer can verify.
+This scope is appropriate for internal infrastructure where a known key pair is
+managed by the organization.
 
-The diagram below shows how the platform image, its referrers, and the
-signature form a single cryptographically bound object — and how every stage,
-from build through testing to external governance, re-verifies that signature
-against the digest rather than trusting a tag.
+The diagram below shows how the platform image, its referrers, the lock
+artifact, and the signature form a single cryptographically bound object —
+and how every stage, from build through testing to external governance,
+re-verifies that signature against the digest rather than trusting a tag.
 
 ![Platform image integrity in the build scope: digests bound into an artifact-lock with SBOM and provenance as OCI referrers, signed against cosign.pub and re-verified at every stage](./img/scope1-platform-integrity.svg)
 
@@ -146,27 +143,42 @@ verifying the signature implicitly verifies which attestations belong to the
 image. There is no ambiguity about which SBOM describes which build — the
 cryptographic binding answers that question.
 
+The artifact lock is stored as a separate OCI artifact alongside the image,
+addressed by tag rather than attached as a referrer to the image digest:
+
+```
+application/vnd.cibuild.artifact-lock+json  # artifact lock
+```
+
+Both the commit-specific tag and the `latest` pointer are signed in the same
+build scope, so the verification path is identical to that of the image itself.
+
 ### Verification across stages
 
 Both the test stage and the release stage verify signatures before acting:
 
-- The **test stage** reads the platform digest from the lock file and verifies
-  the signature before running any test. Tests therefore always execute against
-  the exact digest that was built and signed — never against a mutable tag.
+- The **test stage** pulls the platform lock artifact from the registry,
+  verifies its cosign signature, and reads the platform digest from it. Tests
+  therefore always execute against the exact digest that was built and signed —
+  never against a mutable tag.
 
-- The **release stage** reads platform digests from the lock files, re-verifies
-  all signatures, and only then assembles the multi-platform index.
+- The **release stage** pulls and re-verifies all platform lock artifacts, and
+  only then assembles the multi-platform index.
 
 Both stages resolve images by digest independently of tag state, so the
-pipeline is tamper-evident across job boundaries.
+pipeline is tamper-evident across job boundaries and across runners.
 
 ---
 
 ## Compliance and Governance
 
-Because the lock file exposes all artifact digests as plain JSON in the
-repository, compliance and governance tooling can consume it directly without
-registry credentials:
+Because the lock artifact exposes all artifact digests as plain JSON in the
+registry, compliance and governance tooling can consume it directly:
+
+```sh
+# pull the latest lock for a given build tag and platform
+regctl artifact get registry.example.com/myorg/myapp:lock-main-latest-linux-amd64 | jq .
+```
 
 - **SBOM consumers** (e.g. OWASP Dependency-Track, DevGuard) use
   `referrers.sbom` to fetch the CycloneDX SBOM by digest.

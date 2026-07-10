@@ -32,8 +32,8 @@ werden. Nichts Nachgelagertes hängt davon ab, dass ein Tag stabil bleibt.
 
 **Das Artefakt ist der Nachweis.** Ein signierter Digest mit seinen über OCI
 Referrer angehängten Attestierungen *ist* der Sicherheitsnachweis. Es gibt keine
-separate „Sicherheitsschicht“ oberhalb des Artefakts — das Artefakt trägt seine
-eigene Provenienz. Das ist dieselbe Idee wie „Test First“ oder „API First“,
+separate „Sicherheitsschicht" oberhalb des Artefakts — das Artefakt trägt seine
+eigene Provenienz. Das ist dieselbe Idee wie „Test First" oder „API First",
 angewandt auf Sicherheit: die Eigenschaft wird hineindesignt, nicht nachträglich
 hineingeprüft.
 
@@ -47,14 +47,21 @@ Herkunft eines Artefakts vollständig beschreibt.
 ## Die Artifact-Lock-Datei
 
 Nach jedem Plattform-Build wird eine Datei
-`artifact-lock.<platform_name>.json` in das Repository-Root geschrieben und in
-den Branch zurück committet.
+`artifact-lock.<platform_name>.json` geschrieben und als signiertes OCI-Artefakt
+in die Registry gepusht (artifact-type "application/vnd.cibuild.artifact-lock+json")
+— co-lokalisiert mit dem Image, das sie beschreibt. Pro
+Plattform werden zwei Tags gepflegt:
+
+- **`<image>:lock-<build-tag>-<commit-sha>-<platform>`** — unveränderliche,
+  commit-spezifische Referenz auf den exakten Build, der diesen Lock erzeugt hat
+- **`<image>:lock-<build-tag>-latest-<platform>`** — veränderlicher Zeiger auf
+  den aktuellsten Build dieses Tags, nach jedem erfolgreichen Push aktualisiert
 
 Die Lock-Datei hält die exakten Digests des Plattform-Images und aller seiner
 Supply-Chain-Referrer fest — SBOM, Schwachstellenbericht, Provenance — zusammen
 mit dem Digest der Signatur und dem Source-Commit. Da das Image signiert ist und
 die Referrer an seinen Digest gebunden sind, ist die gesamte Kette nachweislich
-intakt, wann immer die Lock-Datei gelesen wird.
+intakt, wann immer das Lock-Artefakt gelesen wird.
 
 ```json
 {
@@ -74,21 +81,10 @@ intakt, wann immer die Lock-Datei gelesen wird.
 }
 ```
 
-### Warum die Lock-Datei zurück ins Repository committet wird
-
-Die Lock-Datei unmittelbar nach dem Signieren zu committen — bevor eine
-nachgelagerte Stage läuft — hat zwei Effekte.
-
-Erstens zwingt es jeden Consumer, den Digest über das Versionskontrollsystem zu
-beziehen statt über eine interne Übergabe. Eine Test-Stage, die den Digest aus
-der committeten Lock-Datei liest, kann zwischen Build und Test nicht mit einem
-anderen Digest oder untergeschobenen Referrern gefüttert werden. Die Lock-Datei
-im Repository ist die alleinige Quelle der Wahrheit.
-
-Zweitens macht es die Integritätsdaten des Artefakts ohne Registry-Zugang
-verfügbar. Die Lock-Datei ist reines JSON im Repository — jedes externe Werkzeug
-kann die Digests direkt konsumieren, um Attestierungen abzurufen und zu
-verifizieren.
+Ein optionaler Kondensierungsschritt (`cibuild_ci_condense_lock_artifacts`) kann
+Lock-Dateien nach einem Merge ins VCS zurückspiegeln, für Workflows die
+Lock-Daten im Repository benötigen. Dieser Schritt ist explizit und vom
+Build-Pipeline-Fluss entkoppelt.
 
 ---
 
@@ -99,16 +95,18 @@ Vertrauenseigenschaften.
 
 ### Build-Scope — statischer Schlüssel
 
-Die Build-Stage signiert jedes Plattform-Image und seine Referrer mit einem
-statischen Schlüsselpaar. Der private Schlüssel wird als Secret injiziert; der
-öffentliche Schlüssel liegt im Repository (z. B. `cosign.pub`), sodass jeder
-Consumer verifizieren kann. Dieser Scope eignet sich für interne Infrastruktur,
-in der ein bekanntes Schlüsselpaar von der Organisation verwaltet wird.
+Die Build-Stage signiert jedes Plattform-Image, seine Referrer und sein
+Lock-Artefakt mit einem statischen Schlüsselpaar. Der private Schlüssel wird als
+Secret injiziert; der öffentliche Schlüssel liegt im Repository (z. B.
+`cosign.pub`), sodass jeder Consumer verifizieren kann. Dieser Scope eignet sich
+für interne Infrastruktur, in der ein bekanntes Schlüsselpaar von der
+Organisation verwaltet wird.
 
-Das folgende Diagramm zeigt, wie das Plattform-Image, seine Referrer und die
-Signatur ein einziges kryptografisch gebundenes Objekt bilden — und wie jede
-Stage, vom Build über das Testen bis zur externen Governance, diese Signatur
-gegen den Digest erneut verifiziert, statt einem Tag zu vertrauen.
+Das folgende Diagramm zeigt, wie das Plattform-Image, seine Referrer, das
+Lock-Artefakt und die Signatur ein einziges kryptografisch gebundenes Objekt
+bilden — und wie jede Stage, vom Build über das Testen bis zur externen
+Governance, diese Signatur gegen den Digest erneut verifiziert, statt einem Tag
+zu vertrauen.
 
 ![Plattform-Image-Integrität im Build-Scope: Digests werden in eine Artifact-Lock gebunden, mit SBOM und Provenance als OCI Referrer, gegen cosign.pub signiert und in jeder Stage erneut verifiziert](./img/scope1-platform-integrity.svg)
 
@@ -153,31 +151,44 @@ verifiziert das Überprüfen der Signatur implizit, welche Attestierungen zum
 Image gehören. Es gibt keine Mehrdeutigkeit darüber, welche SBOM welchen Build
 beschreibt — die kryptografische Bindung beantwortet diese Frage.
 
+Der Artifact-Lock wird als separates OCI-Artefakt neben dem Image gespeichert,
+adressiert über einen Tag statt als Referrer an den Image-Digest angehängt:
+
+```
+application/vnd.cibuild.artifact-lock+json  # Artifact-Lock
+```
+
+Sowohl der commit-spezifische Tag als auch der `latest`-Zeiger werden im selben
+Build-Scope signiert — der Verifikationspfad ist identisch zu dem des Images.
+
 ### Verifikation über Stages hinweg
 
 Sowohl die Test- als auch die Release-Stage verifizieren Signaturen, bevor sie
 handeln:
 
-- Die **Test-Stage** liest den Plattform-Digest aus der Lock-Datei und
-  verifiziert die Signatur, bevor ein Test ausgeführt wird. Tests laufen daher
-  immer gegen genau den Digest, der gebaut und signiert wurde — niemals gegen
-  einen veränderlichen Tag.
+- Die **Test-Stage** lädt das Plattform-Lock-Artefakt aus der Registry,
+  verifiziert seine cosign-Signatur und liest den Plattform-Digest daraus. Tests
+  laufen daher immer gegen genau den Digest, der gebaut und signiert wurde —
+  niemals gegen einen veränderlichen Tag.
 
-- Die **Release-Stage** liest die Plattform-Digests aus den Lock-Dateien,
-  verifiziert alle Signaturen erneut und baut erst dann den
-  Multi-Plattform-Index zusammen.
+- Die **Release-Stage** lädt und verifiziert alle Plattform-Lock-Artefakte
+  erneut und baut erst dann den Multi-Plattform-Index zusammen.
 
 Beide Stages lösen Images über den Digest auf, unabhängig vom Tag-Zustand —
-dadurch ist die Pipeline über Job-Grenzen hinweg manipulationssicher
-nachweisbar.
+dadurch ist die Pipeline über Job-Grenzen und Runner hinweg
+manipulationssicher nachweisbar.
 
 ---
 
 ## Compliance und Governance
 
-Da die Lock-Datei alle Artefakt-Digests als reines JSON im Repository
-bereitstellt, können Compliance- und Governance-Werkzeuge sie direkt ohne
-Registry-Credentials konsumieren:
+Da das Lock-Artefakt alle Artefakt-Digests als reines JSON in der Registry
+bereitstellt, können Compliance- und Governance-Werkzeuge es direkt konsumieren:
+
+```sh
+# aktuellsten Lock für einen Build-Tag und eine Plattform abrufen
+regctl artifact get registry.example.com/myorg/myapp:lock-main-latest-linux-amd64 | jq .
+```
 
 - **SBOM-Consumer** (z. B. OWASP Dependency-Track, DevGuard) nutzen
   `referrers.sbom`, um die CycloneDX-SBOM per Digest abzurufen.
