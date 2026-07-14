@@ -177,7 +177,7 @@ registry, compliance and governance tooling can consume it directly:
 
 ```sh
 # pull the latest lock for a given build tag and platform
-regctl artifact get registry.example.com/myorg/myapp:lock-main-latest-linux-amd64 | jq .
+regctl artifact get registry.example.com/myorg/myapp-lock:main-latest-linux-amd64 | jq .
 ```
 
 - **SBOM consumers** (e.g. OWASP Dependency-Track, DevGuard) use
