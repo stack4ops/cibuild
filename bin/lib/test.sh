@@ -395,37 +395,14 @@ assert_response() {
   if [ $# -lt 3 ]; then
     cibuild_main_err "Usage: assert_repspone assert port entrypoint:'keep'=keep entrypoint|''=remove entrypoint|'entrypoint p.e. /bin/sh' optional cmd params p.e. '-c' 'ls -lat'"
   fi
-  local test_backend=$(cibuild_env_get 'test_backend') \
-        target_image=$(cibuild_ci_target_image) \
-        build_tag=$(cibuild_ci_build_tag) \
-        platform_name=$(cibuild_core_get_platform_name) \
-        lock_digest
   
-  lock_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest")
+  local test_backend=$(cibuild_env_get 'test_backend')
 
-  _test_id=$((1000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 9000))
-  _test_image="${target_image}@${lock_digest}"
-  _container="testrun-${_test_id}"
-  _pod="testrun-${_test_id}"
-
-  cibuild_log_debug "_test_id $_test_id"
-  cibuild_log_debug "_test_image $_test_image"
-  cibuild_log_debug "_container $_container"
-  cibuild_log_debug "_pod $_pod"
-  
   case "$test_backend" in 
     docker)
-      if ! cibuild__test_detect_docker; then
-        cibuild_main_err "test_backend $test_backend requires available dockerd"
-      fi
-      _host=docker
       cibuild__test_assert_response_docker "$@"
       ;;
     kubernetes)
-      if ! cibuild__test_detect_kubernetes; then
-        cibuild_main_err "test_backend $test_backend requires available kubernetes cluster"
-      fi
-      _host=127.0.0.1
       cibuild__test_assert_response_kubernetes "$@"
       ;;
     *)
@@ -438,37 +415,14 @@ assert_log() {
   if [ $# -lt 2 ]; then
     cibuild_main_err "Usage: assert_log assert entrypoint:'keep'=keep entrypoint|''=remove entrypoint|'entrypoint p.e. /bin/sh' optional cmd params p.e. '-c' 'ls -lat'"
   fi
-  local test_backend=$(cibuild_env_get 'test_backend') \
-        target_image=$(cibuild_ci_target_image) \
-        build_tag=$(cibuild_ci_build_tag) \
-        platform_name=$(cibuild_core_get_platform_name) \
-        lock_digest
   
-  lock_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest")
+  local test_backend=$(cibuild_env_get 'test_backend')
 
-  _test_id=$((1000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 9000))
-  _test_image="${target_image}@${lock_digest}"
-  _container="testrun-${_test_id}"
-  _pod="testrun-${_test_id}"
-
-  cibuild_log_debug "_test_id $_test_id"
-  cibuild_log_debug "_test_image $_test_image"
-  cibuild_log_debug "_container $_container"
-  cibuild_log_debug "_pod $_pod"
-      
-  case "$test_backend" in 
+  case "${test_backend}" in 
     docker)
-      if ! cibuild__test_detect_docker; then
-        cibuild_main_err "test_backend $test_backend requires available dockerd"
-      fi
-      _host=docker
       cibuild__test_assert_log_docker "$@"
       ;;
     kubernetes)
-      if ! cibuild__test_detect_kubernetes; then
-        cibuild_main_err "test_backend $test_backend requires kubernetes and serviceaccount"
-      fi
-      _host=127.0.0.1
       cibuild__test_assert_log_kubernetes "$@"
       ;;
     *)
@@ -487,7 +441,42 @@ cibuild__test_image() {
   local test_script_file \
         test_assert_file \
         test_script_file=$(cibuild_env_get 'test_script_file') \
-        test_assert_file=$(cibuild_env_get 'test_assert_file')
+        test_assert_file=$(cibuild_env_get 'test_assert_file') \
+        target_image=$(cibuild_ci_target_image) \
+        platform_name=$(cibuild_core_get_platform_name) \
+        test_backend=$(cibuild_env_get 'test_backend') \
+        lock_digest
+
+  lock_digest=$(cibuild_ci_lock_get "${platform_name}" "image_digest")
+
+  _test_id=$((1000 + $(od -An -N2 -tu2 /dev/urandom | tr -d ' ') % 9000))
+  _test_image="${target_image}@${lock_digest}"
+  _container="testrun-${_test_id}"
+  _pod="testrun-${_test_id}"
+
+  case "$test_backend" in 
+    docker)
+      if ! cibuild__test_detect_docker; then
+        cibuild_main_err "test_backend $test_backend requires available dockerd"
+      fi
+      _host=docker
+      ;;
+    kubernetes)
+      if ! cibuild__test_detect_kubernetes; then
+        cibuild_main_err "test_backend $test_backend requires kubernetes and serviceaccount"
+      fi
+      _host=127.0.0.1
+      ;;
+    *)
+      cibuild_main_err "test_backend $test_backend not supported"
+      ;;
+  esac
+
+  cibuild_log_debug "_test_id $_test_id"
+  cibuild_log_debug "_test_image $_test_image"
+  cibuild_log_debug "_container $_container"
+  cibuild_log_debug "_pod $_pod"
+  cibuild_log_debug "_host $_host"
 
   case "$mode" in
     script)
